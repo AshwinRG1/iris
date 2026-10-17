@@ -1,0 +1,8 @@
+# Template. bootstrap.sh replaces __HOST__ with <ip-with-dashes>.nip.io.
+# No log directive: Caddy writes no access log, so request URLs stay off disk.
+__HOST__ {
+	request_body {
+		max_size 2MB
+	}
+	reverse_proxy 127.0.0.1:8000
+}

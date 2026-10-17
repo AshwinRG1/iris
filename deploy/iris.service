@@ -1,0 +1,16 @@
+[Unit]
+Description=Iris detection server
+After=network.target
+
+[Service]
+User=iris
+WorkingDirectory=/opt/iris/models
+EnvironmentFile=/etc/iris.env
+ExecStart=/opt/iris/.venv/bin/uvicorn main:app --app-dir /opt/iris/server --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

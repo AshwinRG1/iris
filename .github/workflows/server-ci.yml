@@ -5,12 +5,14 @@ on:
     paths:
       - "server/**"
       - "docs/contract/**"
+      - "deploy/**"
       - ".github/workflows/server-ci.yml"
   push:
     branches: [main]
     paths:
       - "server/**"
       - "docs/contract/**"
+      - "deploy/**"
       - ".github/workflows/server-ci.yml"
 
 permissions:
@@ -39,3 +41,15 @@ jobs:
       - run: ruff format --check .
       - run: mypy .
       - run: pytest -q
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck deploy scripts
+        run: |
+          shopt -s nullglob
+          files=(deploy/*.sh)
+          [ "${#files[@]}" -gt 0 ] || { echo "no deploy scripts found" >&2; exit 1; }
+          shellcheck "${files[@]}"
