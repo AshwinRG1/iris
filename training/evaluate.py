@@ -2,6 +2,7 @@
 
 import argparse
 import csv
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -33,10 +34,54 @@ def ordered_names(names):
     return result
 
 
+
+def audit_dataset(meta, data, split):
+    """Require explicit, valid ground truth before calculating accuracy."""
+    root = Path(meta.get("path", data.parent))
+    if not root.is_absolute():
+        root = data.parent / root
+    entry = meta[split]
+    entries = entry if isinstance(entry, list) else [entry]
+    images = []
+    for entry in entries:
+        folder = Path(entry)
+        if not folder.is_absolute():
+            folder = root / folder
+        if not folder.is_dir():
+            raise ValueError(f"Split must point to an image directory: {folder}")
+        images.extend(p.resolve() for p in folder.rglob("*")
+                      if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".bmp"})
+    if not images or len(set(images)) != len(images):
+        raise ValueError("Split is empty or repeats image paths.")
+    names = ordered_names(meta["names"])
+    positives = boxes = 0
+    for image in images:
+        parts = list(image.parts)
+        if "images" not in parts:
+            raise ValueError(f"Expected YOLO images/labels layout: {image}")
+        index = len(parts) - 1 - parts[::-1].index("images")
+        parts[index] = "labels"
+        label = Path(*parts).with_suffix(".txt")
+        if not label.is_file():
+            raise ValueError(f"Missing annotation (use explicit empty files for backgrounds): {label}")
+        rows = [line.split() for line in label.read_text(encoding="utf-8-sig").splitlines() if line.strip()]
+        for row in rows:
+            if len(row) != 5:
+                raise ValueError(f"Expected five-value detection annotations: {label}")
+            cls = int(row[0])
+            coords = [float(value) for value in row[1:]]
+            if not 0 <= cls < len(names) or not all(math.isfinite(v) and 0 <= v <= 1 for v in coords) or min(coords[2:]) <= 0:
+                raise ValueError(f"Invalid class ID or bounding box: {label}")
+        positives += bool(rows)
+        boxes += len(rows)
+    if not boxes:
+        raise ValueError("No annotated objects: cannot calculate meaningful AP.")
+    return {"images": len(images), "positive_images": positives,
+            "background_images": len(images) - positives, "boxes": boxes}
+
+
 def evaluate(args):
     import yaml
-    import ultralytics
-    from ultralytics import YOLO
 
     data = args.data.resolve()
     with data.open(encoding="utf-8-sig") as handle:
@@ -49,6 +94,13 @@ def evaluate(args):
             "split, or use --split val for preliminary validation only."
         )
     names = ordered_names(meta.get("names"))
+    audit = audit_dataset(meta, data, args.split)
+    print(f"Dataset audit: {audit}")
+    if args.check_data:
+        return
+    import ultralytics
+    from ultralytics import YOLO
+
     # Ultralytics compares numerical class IDs; matching names alone is insufficient.
     # This permits stock COCO person=0 on a one-class person=0 dataset.
     class_ids = list(range(len(names)))
@@ -71,6 +123,13 @@ def evaluate(args):
                 f"Class IDs differ for {checkpoint}: dataset={names}, "
                 f"model={model_names}. Remap classes before comparing."
             )
+        validation = {}
+
+        def capture_validation(validator):
+            validation["artifacts"] = str(validator.save_dir)
+            validation["images"] = validator.seen
+
+        model.add_callback("on_val_end", capture_validation)
         metrics = model.val(
             data=str(data), split=args.split, classes=class_ids,
             imgsz=args.imgsz, batch=args.batch, device=args.device,
@@ -79,19 +138,21 @@ def evaluate(args):
             project=str(args.project), name=f"{index}_{Path(checkpoint).stem}",
             exist_ok=False,
         )
+        if validation["images"] != audit["images"]:
+            raise ValueError("Validation skipped images; inspect corrupt-image warnings before reporting results.")
         row = dict(
             timestamp_utc=datetime.now(timezone.utc).isoformat(),
             model=checkpoint, data=str(data), split=args.split,
-            classes=";".join(names), images=model.validator.seen,
+            classes=";".join(names), images=audit["images"],
             precision=float(metrics.box.mp), recall=float(metrics.box.mr),
             map50=float(metrics.box.map50), map50_95=float(metrics.box.map),
             inference_ms_per_image=metrics.speed["inference"],
             preprocess_ms_per_image=metrics.speed["preprocess"],
             postprocess_ms_per_image=metrics.speed["postprocess"],
-            device=str(model.validator.device), imgsz=args.imgsz,
+            device=str(model.device), imgsz=args.imgsz,
             batch=args.batch, conf=args.conf, iou=args.iou,
             ultralytics_version=ultralytics.__version__,
-            artifacts=str(metrics.save_dir),
+            artifacts=validation["artifacts"],
         )
         new_file = not args.output.exists()
         with args.output.open("a", newline="", encoding="utf-8") as handle:
@@ -104,8 +165,9 @@ def evaluate(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data", type=Path, default=Path("data/merged/data.yaml"))
-    parser.add_argument("--models", nargs="+", default=DEFAULT_MODELS)
+    parser.add_argument("--data", type=Path, default=Path("data/test/data/data.yaml"))
+    parser.add_argument("--models", nargs="+", default=[DEFAULT_MODELS[0]])
+    parser.add_argument("--check-data", action="store_true", help="Audit annotations without loading models")
     parser.add_argument("--split", choices=["test", "val"], default="test")
     parser.add_argument("--device", default="cpu", help="cpu, 0 for CUDA, or mps")
     parser.add_argument("--imgsz", type=int, default=640)
