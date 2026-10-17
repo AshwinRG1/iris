@@ -10,7 +10,7 @@ from fastapi import Request
 from config import Settings
 from detector import NO_MODEL, Detector, ModelInfo
 from domain import PolicyState, Tuning
-from store import FrameLog, LatencyStats
+from store import EventRing, FrameLog, LatencyStats, Snapshot
 
 
 # Placeholder: moves to the describer module in a later ticket.
@@ -39,6 +39,7 @@ class Deps:
 class Runtime:
     device: str
     frame_log: FrameLog
+    event_log: FrameLog
     tuning: Tuning
     # Set on the loop from load()'s result. /health reads these, never the detector.
     name: str = ""
@@ -48,6 +49,8 @@ class Runtime:
     last_frame_id: int = 0
     policy: PolicyState = field(default_factory=PolicyState)
     stats: LatencyStats = field(default_factory=LatencyStats)
+    latest: Snapshot | None = None
+    events: EventRing = field(default_factory=EventRing)
     # The single inference slot: one worker thread, so the model is never used concurrently.
     slot: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor(max_workers=1))
 

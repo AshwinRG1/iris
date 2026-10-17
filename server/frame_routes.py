@@ -13,6 +13,7 @@ from auth import require_key_header
 from deps import Deps, Runtime, get_deps, get_runtime
 from detector import Detector
 from domain import Detection, Side
+from store import Snapshot, event_json
 
 router = APIRouter()
 
@@ -81,7 +82,14 @@ async def frame(
         server_ms=deps.clock.now_ms() - started,
     )
     runtime.stats.record(started, reply.server_ms)
-    runtime.frame_log.append({"at": deps.wall_clock.now().isoformat(), **reply.model_dump()})
+    at = deps.wall_clock.now()
+    runtime.latest = Snapshot(runtime.last_frame_id, started, at, jpeg, tuple(kept))
+    runtime.frame_log.append({"at": at.isoformat(), **reply.model_dump()})
+    if alert is not None:
+        # The policy alerts on the strongest hit; the event names the same one.
+        best = max((d for d in kept if d.conf >= runtime.tuning.conf_alert), key=lambda d: d.conf)
+        event = runtime.events.add(started, at, best.side, best.conf)
+        runtime.event_log.append(event_json(event))
     return reply
 
 
