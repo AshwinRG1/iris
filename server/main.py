@@ -55,7 +55,7 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="Iris server", lifespan=_lifespan)
     app.state.deps = Deps(detector, describer, clock, wall_clock, settings)
-    app.state.runtime = Runtime(device=detector.device)
+    app.state.runtime = Runtime(device=detector.device, tuning=settings.tuning)
     if not settings.iris_api_key:
         log.warning("IRIS_API_KEY is not set; authentication is off")
     app.add_middleware(BodyLimitMiddleware, max_bytes=settings.max_upload_bytes)

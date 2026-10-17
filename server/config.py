@@ -1,7 +1,11 @@
 """Settings, parsed from the environment once at startup."""
 
-from pydantic import Field
+from typing import Self
+
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from domain import Tuning
 
 
 class Settings(BaseSettings):
@@ -15,6 +19,32 @@ class Settings(BaseSettings):
     iris_api_key: str = ""  # empty: no key checks anywhere
     # Caps the whole request body, multipart framing included.
     max_upload_bytes: int = Field(default=2_000_000, gt=0)
+
+    # Alert policy tuning. Seconds in the environment, ms inside.
+    conf_alert: float = 0.35
+    window: int = 3
+    needed: int = 2
+    cooldown_s: float = Field(default=4.0, ge=0, allow_inf_nan=False)
+    same_side_repeat_s: float = Field(default=10.0, ge=0, allow_inf_nan=False)
+    window_max_age_s: float = Field(default=2.0, ge=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def _check_tuning(self) -> Self:
+        if self.conf_alert < self.conf_detect:
+            raise ValueError("CONF_ALERT must be at least CONF_DETECT")
+        self.tuning  # noqa: B018  (Tuning validates itself; a bad value fails startup here)
+        return self
+
+    @property
+    def tuning(self) -> Tuning:
+        return Tuning(
+            conf_alert=self.conf_alert,
+            window=self.window,
+            needed=self.needed,
+            cooldown_ms=round(self.cooldown_s * 1000),
+            same_side_repeat_ms=round(self.same_side_repeat_s * 1000),
+            window_max_age_ms=round(self.window_max_age_s * 1000),
+        )
 
     @property
     def alert_label_set(self) -> frozenset[str]:

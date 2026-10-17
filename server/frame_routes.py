@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from PIL import Image
 from pydantic import BaseModel
 
+from alerts import decide
 from auth import require_key_header
 from deps import Deps, Runtime, get_deps, get_runtime
 from detector import Detector
@@ -60,8 +61,9 @@ async def frame(
 ) -> FrameReply:
     if not runtime.ready:
         raise HTTPException(status_code=503, detail="model not ready")
-    started = deps.clock.now_ms()
     jpeg = await file.read()
+    # Arrival time (the body is in), not completion time: the policy orders frames by arrival.
+    started = deps.clock.now_ms()
     try:
         found = await asyncio.get_running_loop().run_in_executor(
             runtime.slot, _decode_and_detect, deps.detector, jpeg
@@ -70,10 +72,11 @@ async def frame(
         raise HTTPException(status_code=400, detail=str(e)) from e
     labels = deps.settings.alert_label_set
     kept = [d for d in found if d.label in labels and d.conf >= deps.settings.conf_detect]
+    runtime.policy, alert = decide(runtime.policy, kept, started, runtime.tuning)
     runtime.last_frame_id += 1
     return FrameReply(
         detections=[DetectionOut(label=d.label, conf=d.conf, side=d.side) for d in kept],
-        alert=None,
+        alert=alert,
         frame_id=runtime.last_frame_id,
         server_ms=deps.clock.now_ms() - started,
     )

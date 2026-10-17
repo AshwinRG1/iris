@@ -45,13 +45,14 @@ class FakeDescriber:
 
 
 class FakeClock:
-    def __init__(self) -> None:
-        self.t = 1000
+    """Integer ms. Each call advances `tick` ms; tick=0 gives a clock moved only by hand."""
 
-    """Each call advances 10 ms, so a call pair spans exactly 10 ms."""
+    def __init__(self, tick: int = 10) -> None:
+        self.t = 1000
+        self.tick = tick
 
     def now_ms(self) -> int:
-        self.t += 10
+        self.t += self.tick
         return self.t
 
 
