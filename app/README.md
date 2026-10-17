@@ -50,6 +50,24 @@ A sample iOS application demonstrating integration with Meta Wearables Device Ac
 
 ## Troubleshooting
 
+### Iris uploads and detection HUD
+
+Tap the waveform button on the camera screen to open **Iris status**. Enter the
+server's base URL (without `/frame`) and its key, if one is required, then enable
+**Send frames and speak alerts**. The URL and key are saved locally; uploads start
+off each time the app launches. Start the session and live preview using either
+glasses or the Mock Device Kit to send frames.
+
+The app sends a fresh 640-pixel-wide JPEG at most every 400 ms, with one request at
+a time and a 1.5-second timeout. Errors appear in Iris status and uploads retry on
+subsequent frames. Pausing or stopping the preview cancels pending uploads and
+speech. The HUD shows server detections under Left, Ahead and Right; the API does
+not supply bounding boxes. Indicators expire after two seconds without a reply.
+Only server `alert` text is spoken. Optional scene descriptions appear in status.
+
+`FrameUploaderTests` covers the shared JSON fixtures, multipart/JPEG formatting,
+throttling, cancellation and recovery using an in-memory URL loading transport.
+
 For issues related to the Meta Wearables Device Access Toolkit, please refer to the [developer documentation](https://wearables.developer.meta.com/docs/develop/) or visit our [discussions forum](https://github.com/facebook/meta-wearables-dat-ios/discussions)
 
 ## License
