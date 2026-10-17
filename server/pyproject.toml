@@ -11,6 +11,11 @@ python_version = "3.12"
 strict = true
 exclude = ["zeroshot\\.py$"]
 
+[[tool.mypy.overrides]]
+module = ["zeroshot"]
+follow_imports = "skip"
+ignore_errors = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
