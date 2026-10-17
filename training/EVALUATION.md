@@ -82,7 +82,7 @@ Timing columns are Ultralytics mean preprocessing, inference, and postprocessing
 
 ## Remaining evaluation work
 
-This script evaluates YOLO bounding-box checkpoints only. OWLv2 needs a separate prediction adapter and consistent class/box semantics before a fair mAP comparison. Independent video clips need frame-level ground truth before detection rate and false-positive metrics can be reported; raw detection frequency is not accuracy.
+This script evaluates YOLO bounding-box checkpoints only. OWLv2 is implemented in `server/zeroshot.py` and scored by `training/evaluate_zeroshot.py`; see [OWLV2.md](OWLV2.md) for the fixed whole-person prompts and matching metric settings. Independent video clips need frame-level ground truth before detection rate and false-positive metrics can be reported; raw detection frequency is not accuracy.
 
 Ultralytics validation API reference: https://docs.ultralytics.com/modes/val/
 
