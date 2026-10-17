@@ -118,7 +118,7 @@ async def frame(
     )
     runtime.stats.record(started, reply.server_ms)
     at = deps.wall_clock.now()
-    runtime.latest = Snapshot(runtime.last_frame_id, started, at, jpeg, tuple(kept))
+    runtime.latest = Snapshot(runtime.last_frame_id, deps.clock.now_ms(), at, jpeg, tuple(kept))
     runtime.frame_log.append({"at": at.isoformat(), **reply.model_dump()})
     if alert is not None:
         event = runtime.events.add(alert.t_ms, at, alert.hit.side, alert.hit.conf)
@@ -148,6 +148,7 @@ async def health(
     runtime: Annotated[Runtime, Depends(get_runtime)],
 ) -> Health:
     info = runtime.model_info
+    now_ms = deps.clock.now_ms()
     return Health(
         ready=runtime.ready,
         detector=runtime.name,
@@ -159,7 +160,7 @@ async def health(
         class_names=None if info.class_names is None else list(info.class_names),
         fallback=info.fallback,
         commit=deps.settings.commit,
-        fps=runtime.stats.fps(deps.clock.now_ms()),
-        server_ms_p50=runtime.stats.server_ms_percentile(0.50),
-        server_ms_p95=runtime.stats.server_ms_percentile(0.95),
+        fps=runtime.stats.fps(now_ms),
+        server_ms_p50=runtime.stats.server_ms_percentile(0.50, now_ms),
+        server_ms_p95=runtime.stats.server_ms_percentile(0.95, now_ms),
     )

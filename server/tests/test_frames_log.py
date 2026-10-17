@@ -184,3 +184,53 @@ def test_health_fps_is_positive_when_frames_are_recorded_out_of_order() -> None:
     with _timed([(800, 5), (0, 5), (400, 5), (1600, 5), (1200, 5)]) as (c, clock):
         clock.t = 2000
         assert c.get("/health").json()["fps"] == 2.0
+
+
+def test_health_percentiles_age_out_after_sixty_seconds_and_return_with_a_new_frame() -> None:
+    # The frame arrived at 1000 and cost 5 ms; the window is the 60 s ending now.
+    with _timed([(1000, 5)]) as (c, clock):
+        right_after = c.get("/health").json()
+        clock.t = 61_000  # exactly 60 s after arrival: still inside
+        inside = c.get("/health").json()
+        clock.t = 61_001  # just past
+        gone = c.get("/health").json()
+        clock.t = 70_000
+        _post(c)
+        back = c.get("/health").json()
+    for h in (right_after, inside):
+        assert type(h["server_ms_p50"]) is int
+        assert type(h["server_ms_p95"]) is int
+    assert gone["server_ms_p50"] is None
+    assert gone["server_ms_p95"] is None
+    assert (back["server_ms_p50"], back["server_ms_p95"]) == (5, 5)
+
+
+def test_health_percentiles_exclude_a_frame_stamped_after_now() -> None:
+    with _timed([(1000, 10), (5000, 999)]) as (c, clock):
+        clock.t = 2000
+        h = c.get("/health").json()
+    assert (h["server_ms_p50"], h["server_ms_p95"]) == (10, 10)
+
+
+def test_health_percentiles_are_ints_for_out_of_order_records() -> None:
+    with _timed([(3000, 30), (1000, 10), (2000, 20), (4000, 40)]) as (c, clock):
+        clock.t = 5000
+        h = c.get("/health").json()
+    assert (h["server_ms_p50"], h["server_ms_p95"]) == (20, 40)
+    assert type(h["server_ms_p50"]) is int
+    assert type(h["server_ms_p95"]) is int
+
+
+def test_health_percentiles_with_101_frames_in_the_window_count_only_the_last_100() -> None:
+    # One slow frame first, then 100 fast ones, all within 60 s: the slow one is capped out.
+    with _timed([(0, 1000)] + [(1000 + i * 100, 10) for i in range(100)]) as (c, clock):
+        clock.t = 20_000
+        h = c.get("/health").json()
+    assert (h["server_ms_p50"], h["server_ms_p95"]) == (10, 10)
+
+
+def test_health_percentiles_drop_only_the_frames_outside_the_window() -> None:
+    with _timed([(0, 900), (50_000, 10), (55_000, 20)]) as (c, clock):
+        clock.t = 65_000
+        h = c.get("/health").json()
+    assert (h["server_ms_p50"], h["server_ms_p95"]) == (10, 20)

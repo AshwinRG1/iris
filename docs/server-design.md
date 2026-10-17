@@ -99,10 +99,10 @@ Either side's PRs must be revertable without breaking the other side.
 
 | Method and path | Auth | Purpose |
 | --- | --- | --- |
-| `GET /health` | none | Readiness, active model, device, labels, image size, fps, server ms p50/p95, git commit, tuning |
+| `GET /health` | none | Readiness, active model, device, labels, image size, fps, server ms p50/p95, commit, tuning. p50/p95 cover the last 100 frames within 60 s and are null when none are in that window |
 | `GET /` | key, as `?key=` | Live view page |
 | `GET /latest.jpg` | key, as `?key=` | The last frame received, as raw JPEG |
-| `GET /latest` | key, as `?key=` | `frame_id`, detections with normalized boxes, and the time the frame arrived |
+| `GET /latest` | key, as `?key=` | `frame_id`, detections with normalized boxes, the time the frame arrived, `age_ms`, `boot_id`, and an optional `stale` (true once the published frame is more than 3 s old; `detections` is then empty) |
 | `GET /events?since=<id>` | key, as `?key=` | Recent events: id, `at` (wall-clock UTC, ISO 8601), side, conf, description |
 | `GET /tuning` | none | The current tuning values |
 | `PUT /tuning` | key | Changes tuning at runtime. Validated, kept in memory, reset to env defaults on restart. |
@@ -303,6 +303,7 @@ The defaults are starting points. Tune them at Checkpoint 3 with `PUT /tuning` w
 
 - `GET /` serves `static/live.html`, with no build step and no framework. When a key is configured, the page reads `key` from its own URL and adds it to every poll.
 - It polls `/latest.jpg` and `/latest` about every 300 ms and draws the boxes on a canvas from normalized coordinates. Each box shows its label and conf, and hits are colored differently from detections below `conf_alert`.
+- `/latest` ages a frame from when its result was published, not from when it arrived, so a slow inference does not publish a frame that is already stale. Past `STALE_MS` (3000 ms) it sets `stale` and returns no detections; the page then keeps the last image, draws no boxes and shows "stale (no new frames)". `/latest` also carries `boot_id`, the same id as `/events`; when it changes the page forgets the frame it drew, because frame ids restart from 1. `/health`'s window is the constant `_PERCENTILE_WINDOW_MS` (60 s). Both thresholds are code constants, not settings.
 - It polls `/events` every second for the alert log: `at`, side, conf and description.
 - A header strip shows the model, device, incoming fps, p50/p95 server ms, seconds since the last frame, and the current tuning.
 - **Change from the plan:** the plan had the server draw boxes onto the image. Drawing them in the browser keeps that work out of the frame path, and the same page serves as the "command center" in the demo.
