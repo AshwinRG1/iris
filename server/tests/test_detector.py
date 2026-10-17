@@ -1,7 +1,16 @@
+from collections.abc import Callable
+from typing import Any
+
 import pytest
 from PIL import Image
 
-from detector import ZeroShotDetector, choose_model, pick_device, to_normalized_box
+from detector import (
+    ZeroShotDetector,
+    choose_model,
+    normalize_class_names,
+    pick_device,
+    to_normalized_box,
+)
 from domain import Box
 
 
@@ -56,25 +65,89 @@ def test_model_with_no_classes_falls_back() -> None:
 
 
 def test_zero_shot_adapter_turns_dicts_into_detections() -> None:
-    seen: list[object] = []
+    seen: list[Image.Image] = []
+    image = Image.new("RGB", (8, 8))
 
-    def fake_detect(image: object) -> list[dict[str, object]]:
-        seen.append(image)
+    def fake_detect(img: Image.Image) -> list[dict[str, Any]]:
+        seen.append(img)
         return [{"label": "person", "conf": 0.8, "box": [0.1, 0.2, 0.3, 0.4]}]
 
-    image = Image.new("RGB", (8, 8))
-    detector = ZeroShotDetector(fake_detect, device="cuda")
-    assert detector.load() == "cuda"
+    detector = _zero_shot(fake_detect, device="cuda")
+    assert detector.load().device == "cuda"
+    seen.clear()  # drop the warmup call
     [d] = detector.detect(image)
     assert seen == [image]
     assert (d.label, d.conf) == ("person", 0.8)
     _assert_box(d.box, (0.1, 0.2, 0.3, 0.4))
 
 
-def test_zero_shot_adapter_clamps_boxes_and_handles_no_results() -> None:
-    def fake_detect(image: object) -> list[dict[str, object]]:
-        return [{"label": "x", "conf": 0.5, "box": [-0.1, 0.0, 1.2, 1.0]}]
+def _zero_shot(fn: Callable[[Image.Image], list[dict[str, Any]]], device: str = "cpu") -> Any:
+    detector = ZeroShotDetector(lambda: fn, device, resolve_device=lambda d: d)
+    detector.load()
+    return detector
 
-    [d] = ZeroShotDetector(fake_detect, device="cpu").detect(Image.new("RGB", (8, 8)))
-    _assert_box(d.box, (0.0, 0.0, 1.0, 1.0))
-    assert ZeroShotDetector(lambda image: [], device="cpu").detect(Image.new("RGB", (8, 8))) == []
+
+def _one(box: Any, conf: Any = 0.5) -> list[Any]:
+    detector = _zero_shot(lambda img: [{"label": "x", "conf": conf, "box": box}])
+    return list(detector.detect(Image.new("RGB", (8, 8))))
+
+
+def test_zero_shot_box_with_swapped_corners_is_sorted() -> None:
+    [d] = _one([0.5, 0.9, 0.1, 0.2])
+    _assert_box(d.box, (0.1, 0.2, 0.5, 0.9))
+
+
+def test_zero_shot_box_outside_the_unit_square_is_rejected_not_clamped() -> None:
+    assert _one([-0.1, 0.0, 0.5, 1.0]) == []
+    assert _one([0.0, 0.0, 1.2, 1.0]) == []
+
+
+def test_zero_shot_non_finite_numbers_are_skipped() -> None:
+    nan, inf = float("nan"), float("inf")
+    assert _one([0.1, 0.1, nan, 0.5]) == []
+    assert _one([0.1, 0.1, inf, 0.5]) == []
+    assert _one([0.1, 0.1, 0.5, 0.5], conf=nan) == []
+
+
+def test_zero_shot_malformed_items_are_skipped_and_good_ones_kept() -> None:
+    good = {"label": "person", "conf": 0.7, "box": [0.1, 0.1, 0.2, 0.2]}
+    items: list[dict[str, Any]] = [
+        {"label": "x", "box": [0.1, 0.1, 0.2, 0.2]},  # no conf
+        {"label": "x", "conf": "high", "box": [0.1, 0.1, 0.2, 0.2]},  # not a number
+        {"label": "x", "conf": 0.5, "box": [0.1, 0.1, 0.2]},  # 3 corners
+        {"label": "x", "conf": 0.5, "box": None},
+        {"label": "x", "conf": 0.5},  # no box
+        good,
+    ]
+    detector = _zero_shot(lambda img: items)
+    assert [d.label for d in detector.detect(Image.new("RGB", (8, 8)))] == ["person"]
+
+
+def test_zero_shot_conf_is_clamped_to_unit_range() -> None:
+    [d] = _one([0.1, 0.1, 0.2, 0.2], conf=1.4)
+    assert d.conf == 1.0
+    [d] = _one([0.1, 0.1, 0.2, 0.2], conf=-0.2)
+    assert d.conf == 0.0
+
+
+def test_zero_shot_malformed_items_are_logged_once_per_problem(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    detector = _zero_shot(lambda img: [{"label": "x"}])
+    for _ in range(3):
+        detector.detect(Image.new("RGB", (8, 8)))
+    assert len([r for r in caplog.records if "malformed" in r.getMessage()]) == 1
+
+
+def test_zero_shot_no_results_is_an_empty_list() -> None:
+    assert _zero_shot(lambda img: []).detect(Image.new("RGB", (8, 8))) == []
+
+
+def test_class_names_come_out_in_id_order_from_a_dict_or_a_list() -> None:
+    assert normalize_class_names({1: "car", 0: "person"}) == ("person", "car")
+    assert normalize_class_names(["person", "car"]) == ("person", "car")
+
+
+def test_label_check_ignores_case() -> None:
+    assert choose_model(["Person"], frozenset({"person"})) == "use"
+    assert choose_model(["person"], frozenset({"PERSON"})) == "use"

@@ -1,11 +1,22 @@
 import io
 import threading
+import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from PIL import Image
 
-from detector import ModelInfo
+from detector import NO_MODEL, Loaded
 from domain import Box, Detection
+
+
+def wait_for(condition: Callable[[], bool], timeout_s: float = 5.0) -> None:
+    """Poll until `condition()` is true; fail the test after `timeout_s`."""
+    deadline = time.monotonic() + timeout_s
+    while not condition():
+        if time.monotonic() > deadline:
+            raise AssertionError(f"condition not met within {timeout_s} s")
+        time.sleep(0.01)
 
 
 def jpeg_bytes(width: int = 64, height: int = 48) -> bytes:
@@ -25,10 +36,9 @@ class FakeDetector:
     def __init__(self, script: list[list[Detection]] | None = None) -> None:
         self.script = script or []
         self.detect_threads: list[int] = []
-        self.model_info = ModelInfo("fake", "", (), None)
 
-    def load(self) -> str:
-        return self.device
+    def load(self) -> Loaded:
+        return Loaded(self.device, self.name, NO_MODEL)
 
     def detect(self, image: Image.Image) -> list[Detection]:
         self.detect_threads.append(threading.get_ident())
@@ -41,13 +51,14 @@ class FakeDescriber:
 
 
 class FakeClock:
-    def __init__(self) -> None:
-        self.t = 1000
+    """Integer ms. Each call advances `tick` ms; tick=0 gives a clock moved only by hand."""
 
-    """Each call advances 10 ms, so a call pair spans exactly 10 ms."""
+    def __init__(self, tick: int = 10) -> None:
+        self.t = 1000
+        self.tick = tick
 
     def now_ms(self) -> int:
-        self.t += 10
+        self.t += self.tick
         return self.t
 
 

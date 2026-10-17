@@ -8,7 +8,8 @@ from typing import Protocol
 from fastapi import Request
 
 from config import Settings
-from detector import Detector
+from detector import NO_MODEL, Detector, ModelInfo
+from domain import PolicyState, Tuning
 
 
 # Placeholder: moves to the describer module in a later ticket.
@@ -36,9 +37,14 @@ class Deps:
 @dataclass
 class Runtime:
     device: str
+    tuning: Tuning
+    # Set on the loop from load()'s result. /health reads these, never the detector.
+    name: str = ""
+    model_info: ModelInfo = NO_MODEL
     ready: bool = False
     load_error: str | None = None
     last_frame_id: int = 0
+    policy: PolicyState = field(default_factory=PolicyState)
     # The single inference slot: one worker thread, so the model is never used concurrently.
     slot: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor(max_workers=1))
 

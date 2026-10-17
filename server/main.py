@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
@@ -11,7 +11,7 @@ from fastapi import FastAPI
 
 from config import Settings
 from deps import Clock, Deps, Describer, Runtime, WallClock, get_deps
-from detector import Detector, FallbackDetector, YoloDetector, ZeroShotDetector
+from detector import DetectFn, Detector, FallbackDetector, YoloDetector, ZeroShotDetector
 from frame_routes import router as frame_router
 
 __all__ = ["Deps", "app", "create_app", "get_deps"]
@@ -27,13 +27,16 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     async def load_model() -> None:
         try:
             # Off the loop, in the inference slot; the server answers 503 until it finishes.
-            runtime.device = await asyncio.get_running_loop().run_in_executor(
+            loaded = await asyncio.get_running_loop().run_in_executor(
                 runtime.slot, deps.detector.load
             )
         except Exception as e:
             runtime.load_error = f"{type(e).__name__}: {e}"
-            log.error("model failed to load; /frame stays 503: %s", runtime.load_error)
+            log.error(
+                "model failed to load; /frame stays 503: %s", runtime.load_error, exc_info=True
+            )
             return
+        runtime.device, runtime.name, runtime.model_info = loaded.device, loaded.name, loaded.info
         runtime.ready = True
 
     task = asyncio.create_task(load_model())
@@ -53,7 +56,7 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="Iris server", lifespan=_lifespan)
     app.state.deps = Deps(detector, describer, clock, wall_clock, settings)
-    app.state.runtime = Runtime(device=detector.device)
+    app.state.runtime = Runtime(device=detector.device, tuning=settings.tuning, name=detector.name)
     app.include_router(frame_router)
     return app
 
@@ -73,18 +76,26 @@ class _NoDescriber:
         return ""
 
 
+def _import_zeroshot() -> DetectFn:
+    from zeroshot import detect  # D's module; imported in the slot, only when selected
+
+    return detect  # type: ignore[no-any-return]
+
+
+def build_detector(
+    s: Settings, get_zeroshot: Callable[[], DetectFn] = _import_zeroshot
+) -> Detector:
+    if s.detector == "zeroshot":
+        return ZeroShotDetector(get_zeroshot, s.device)
+    labels = s.alert_label_set
+    return FallbackDetector(
+        lambda path, imgsz: YoloDetector(path, imgsz, s.device, s.conf_detect, labels), s
+    )
+
+
 def _build_app() -> FastAPI:
     s = Settings()
-    detector: Detector
-    if s.detector == "zeroshot":
-        from zeroshot import detect  # D's module; imported only when selected
-
-        detector = ZeroShotDetector(detect, s.device)
-    else:
-        detector = FallbackDetector(
-            lambda path, imgsz: YoloDetector(path, imgsz, s.device, s.conf_detect), s
-        )
-    return create_app(detector, _NoDescriber(), _MonotonicClock(), _SystemWallClock(), s)
+    return create_app(build_detector(s), _NoDescriber(), _MonotonicClock(), _SystemWallClock(), s)
 
 
 app = _build_app()
