@@ -109,7 +109,7 @@ def evaluate(args):
             if next(csv.reader(handle), None) != FIELDS:
                 raise ValueError(f"Existing CSV has a different schema: {args.output}")
     for checkpoint in args.models:
-        if checkpoint not in {"yolo26s.pt"} and not Path(checkpoint).is_file():
+        if checkpoint not in {"yolo26s.pt", "yolo11s.pt"} and not Path(checkpoint).is_file():
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint}")
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
