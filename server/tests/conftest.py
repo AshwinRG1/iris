@@ -1,4 +1,5 @@
 import io
+import threading
 from datetime import UTC, datetime
 
 from PIL import Image
@@ -22,11 +23,13 @@ class FakeDetector:
 
     def __init__(self, script: list[list[Detection]] | None = None) -> None:
         self.script = script or []
+        self.detect_threads: list[int] = []
 
-    def load(self) -> None:
-        pass
+    def load(self) -> str:
+        return self.device
 
     def detect(self, image: Image.Image) -> list[Detection]:
+        self.detect_threads.append(threading.get_ident())
         return self.script.pop(0) if self.script else []
 
 
@@ -38,6 +41,8 @@ class FakeDescriber:
 class FakeClock:
     def __init__(self) -> None:
         self.t = 1000
+
+    """Each call advances 10 ms, so a call pair spans exactly 10 ms."""
 
     def now_ms(self) -> int:
         self.t += 10

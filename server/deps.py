@@ -35,7 +35,9 @@ class Deps:
 
 @dataclass
 class Runtime:
+    device: str
     ready: bool = False
+    load_error: str | None = None
     last_frame_id: int = 0
     # The single inference slot: one worker thread, so the model is never used concurrently.
     slot: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor(max_workers=1))

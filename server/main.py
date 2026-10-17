@@ -22,21 +22,25 @@ log = logging.getLogger("iris")
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     deps: Deps = app.state.deps
-    runtime = Runtime()
-    app.state.runtime = runtime
+    runtime: Runtime = app.state.runtime
 
     async def load_model() -> None:
         try:
             # Off the loop, in the inference slot; the server answers 503 until it finishes.
-            await asyncio.get_running_loop().run_in_executor(runtime.slot, deps.detector.load)
-        except Exception:
-            log.exception("model failed to load; /frame stays 503")
+            runtime.device = await asyncio.get_running_loop().run_in_executor(
+                runtime.slot, deps.detector.load
+            )
+        except Exception as e:
+            runtime.load_error = f"{type(e).__name__}: {e}"
+            log.error("model failed to load; /frame stays 503: %s", runtime.load_error)
             return
         runtime.ready = True
 
     task = asyncio.create_task(load_model())
     yield
     task.cancel()
+    # A load already running in its thread can't be interrupted; shutdown doesn't wait for it.
+    await asyncio.gather(task, return_exceptions=True)
     runtime.slot.shutdown(wait=False, cancel_futures=True)
 
 
@@ -49,6 +53,7 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="Iris server", lifespan=_lifespan)
     app.state.deps = Deps(detector, describer, clock, wall_clock, settings)
+    app.state.runtime = Runtime(device=detector.device)
     app.include_router(frame_router)
     return app
 

@@ -61,6 +61,7 @@ class Health(BaseModel):
     ready: bool
     detector: str
     device: str
+    load_error: str | None
 
 
 @router.get("/health")
@@ -68,4 +69,9 @@ async def health(
     deps: Annotated[Deps, Depends(get_deps)],
     runtime: Annotated[Runtime, Depends(get_runtime)],
 ) -> Health:
-    return Health(ready=runtime.ready, detector=deps.detector.name, device=deps.detector.device)
+    return Health(
+        ready=runtime.ready,
+        detector=deps.detector.name,
+        device=runtime.device,
+        load_error=runtime.load_error,
+    )

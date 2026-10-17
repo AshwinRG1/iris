@@ -43,8 +43,20 @@ def test_person_detection_is_returned_with_side_and_extra_fields() -> None:
     assert reply["detections"] == [{"label": "person", "conf": 0.71, "side": "left"}]
     assert reply["alert"] is None
     assert reply["frame_id"] == 1
-    assert isinstance(reply["server_ms"], int)
+    assert reply["server_ms"] == 10  # FakeClock advances 10 ms per call
     assert set(reply) <= {"detections", "alert", "frame_id", "server_ms", "description"}
+
+
+def test_reply_with_detections_has_the_contract_shapes() -> None:
+    fixture = json.loads((CONTRACT / "frame-alert.json").read_text())
+    with _client(FakeDetector([[det(conf=0.38, cx=0.9)]])) as c:
+        reply = _post(c)
+    assert {"detections", "alert"} <= set(reply)
+    assert set(reply) <= set(fixture) | {"frame_id", "server_ms"}
+    for got, want in zip(reply["detections"], fixture["detections"], strict=False):
+        assert got.keys() == want.keys()
+        assert {k: type(v) for k, v in got.items()} == {k: type(v) for k, v in want.items()}
+    assert reply["detections"][0]["side"] == "right"
 
 
 def test_frame_ids_increase() -> None:
@@ -75,6 +87,24 @@ def test_detection_below_conf_detect_is_dropped() -> None:
         assert [d["conf"] for d in _post(c)["detections"]] == [0.25]
 
 
+def test_detection_runs_off_the_event_loop() -> None:
+    detector = FakeDetector()
+    loop_thread: list[int] = []
+
+    app = create_app(detector, FakeDescriber(), FakeClock(), FakeWallClock(), Settings())
+
+    @app.get("/thread")
+    async def thread() -> None:
+        loop_thread.append(threading.get_ident())
+
+    with TestClient(app) as c:
+        c.get("/thread")
+        _post(c)
+        _post(c)
+    assert len(set(detector.detect_threads)) == 1  # the single inference slot
+    assert detector.detect_threads[0] != loop_thread[0]
+
+
 def test_detector_receives_the_decoded_image() -> None:
     seen: list[tuple[int, int]] = []
 
@@ -93,8 +123,9 @@ class SlowLoad(FakeDetector):
         super().__init__()
         self.release = threading.Event()
 
-    def load(self) -> None:
+    def load(self) -> str:
         self.release.wait(5)
+        return "cpu"
 
 
 @pytest.fixture
@@ -107,6 +138,7 @@ def slow() -> Iterator[SlowLoad]:
 def test_not_ready_gives_503_then_ready(slow: SlowLoad) -> None:
     with _client(slow) as c:
         assert c.get("/health").json()["ready"] is False
+        assert c.get("/health").json()["load_error"] is None
         r = c.post("/frame", files={"file": ("f.jpg", jpeg_bytes(), "image/jpeg")})
         assert r.status_code == 503
         slow.release.set()
@@ -119,3 +151,21 @@ def test_not_ready_gives_503_then_ready(slow: SlowLoad) -> None:
         assert health["detector"] == "fake"
         assert health["device"] == "cpu"
         assert _post(c)["detections"] == []
+
+
+class BrokenLoad(FakeDetector):
+    def load(self) -> str:
+        raise RuntimeError("weights missing")
+
+
+def test_load_failure_is_visible_and_frame_stays_503() -> None:
+    with _client(BrokenLoad()) as c:
+        for _ in range(100):
+            if c.get("/health").json()["load_error"]:
+                break
+            time.sleep(0.05)
+        health = c.get("/health").json()
+        assert health["ready"] is False
+        assert health["load_error"] == "RuntimeError: weights missing"
+        r = c.post("/frame", files={"file": ("f.jpg", jpeg_bytes(), "image/jpeg")})
+        assert r.status_code == 503

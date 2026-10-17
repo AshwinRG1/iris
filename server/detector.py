@@ -1,6 +1,5 @@
 """Detector protocol and the YOLO adapter. ultralytics is imported only inside the adapter."""
 
-import importlib
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -11,10 +10,13 @@ from domain import Box, Detection
 
 class Detector(Protocol):
     name: str
-    device: str
+    device: str  # the requested device; load() returns the one actually in use
 
-    def load(self) -> None:
-        """Load the model and warm it up. Blocking; called off the event loop."""
+    def load(self) -> str:
+        """Load the model, warm it up and return the device in use.
+
+        Blocking; called off the event loop. The caller stores the device.
+        """
         ...
 
     def detect(self, image: Image.Image) -> list[Detection]:
@@ -43,27 +45,29 @@ class YoloDetector:
     def __init__(self, model_path: str, imgsz: int, device: str, min_conf: float) -> None:
         self.name = Path(model_path).stem
         self.device = device
+        self._device = device  # used only by the inference slot thread
         self._model_path = model_path
         self._imgsz = imgsz
+        # Applied as ultralytics' confidence floor. The pipeline filters by CONF_DETECT again.
         self._min_conf = min_conf
         self._model: Any = None
 
-    def load(self) -> None:
-        # import_module keeps mypy happy whether or not the ML deps are installed (CI has none).
-        torch: Any = importlib.import_module("torch")
-        YOLO = importlib.import_module("ultralytics").YOLO
+    def load(self) -> str:
+        import torch
+        from ultralytics import YOLO
 
-        self.device = pick_device(
+        self._device = pick_device(
             self.device,
             cuda=torch.cuda.is_available(),
             mps=torch.backends.mps.is_available(),
         )
         self._model = YOLO(self._model_path)
         self.detect(Image.new("RGB", (self._imgsz, self._imgsz)))
+        return self._device
 
     def detect(self, image: Image.Image) -> list[Detection]:
         result = self._model.predict(
-            image, imgsz=self._imgsz, device=self.device, conf=self._min_conf, verbose=False
+            image, imgsz=self._imgsz, device=self._device, conf=self._min_conf, verbose=False
         )[0]
         height, width = result.orig_shape
         boxes = result.boxes
