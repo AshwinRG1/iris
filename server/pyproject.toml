@@ -1,0 +1,28 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["zeroshot.py", "weights"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+exclude = ["zeroshot\\.py$"]
+
+[[tool.mypy.overrides]]
+module = ["zeroshot"]
+# D's file may not exist yet and is excluded from the gates; a missing import is fine.
+ignore_missing_imports = true
+follow_imports = "skip"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["torch", "torch.*", "ultralytics", "ultralytics.*", "cv2", "cv2.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
