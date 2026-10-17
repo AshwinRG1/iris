@@ -16,3 +16,6 @@ app/**/.build/
 app/**/*.ipa
 app/**/*.dSYM.zip
 app/**/*.dSYM
+
+# Local evaluation environment
+.venv-eval/
