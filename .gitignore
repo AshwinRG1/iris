@@ -1,1 +1,15 @@
 agents.md
+.DS_Store
+**/.DS_Store
+Code snippet
+# Xcode user-specific state & local window/signing state
+app/**/xcuserdata/
+app/**/UserInterfaceState.xcuserstate
+
+# Xcode build artifacts & Swift Package Manager caches
+app/**/DerivedData/
+app/**/build/
+app/**/.build/
+app/**/*.ipa
+app/**/*.dSYM.zip
+app/**/*.dSYM
