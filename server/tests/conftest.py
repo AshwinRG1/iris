@@ -2,9 +2,15 @@ import io
 import threading
 from datetime import UTC, datetime
 
+import pytest
 from PIL import Image
 
 from domain import Box, Detection
+
+
+@pytest.fixture(autouse=True)
+def _key_unset_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("IRIS_API_KEY", raising=False)
 
 
 def jpeg_bytes(width: int = 64, height: int = 48) -> bytes:

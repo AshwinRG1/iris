@@ -2,7 +2,7 @@
 
 import asyncio
 import io
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from PIL import Image
@@ -38,15 +38,17 @@ class BadImage(Exception):
 
 def _decode_and_detect(detector: Detector, jpeg: bytes) -> list[Detection]:
     try:
-        opened = Image.open(io.BytesIO(jpeg))
-        # The header gives the size without decoding pixels, so a bomb is refused cheaply.
-        if max(opened.size) > MAX_SIDE_PX:
-            raise BadImage(f"image side over {MAX_SIDE_PX} px")
+        opened = Image.open(io.BytesIO(jpeg), formats=["JPEG"])
+    except Exception as e:
+        raise BadImage("body is not a decodable JPEG") from e
+    # The header gives the size without decoding pixels, so a bomb is refused cheaply.
+    if max(opened.size) > MAX_SIDE_PX:
+        raise BadImage(f"image side over {MAX_SIDE_PX} px")
+    try:
+        opened.load()
         image = opened.convert("RGB")
-    except BadImage:
-        raise
-    except (OSError, ValueError, SyntaxError, Image.DecompressionBombError) as e:
-        raise BadImage("body is not a decodable image") from e
+    except Exception as e:
+        raise BadImage("body is not a decodable JPEG") from e
     return detector.detect(image)
 
 
@@ -82,6 +84,7 @@ class Health(BaseModel):
     detector: str
     device: str
     load_error: str | None
+    auth: Literal["on", "off"]
 
 
 @router.get("/health")
@@ -94,4 +97,5 @@ async def health(
         detector=deps.detector.name,
         device=runtime.device,
         load_error=runtime.load_error,
+        auth="on" if deps.settings.iris_api_key else "off",
     )

@@ -1,10 +1,14 @@
 """Request body size cap, enforced as the body streams in."""
 
-from fastapi import HTTPException
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 _TOO_LARGE = "request body too large"
+
+
+class _BodyTooLarge(BaseException):  # noqa: N818
+    # A BaseException, so FastAPI's body parsing (any Exception becomes 400) lets it through.
+    pass
 
 
 class BodyLimitMiddleware:
@@ -22,11 +26,13 @@ class BodyLimitMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        too_large = JSONResponse({"detail": _TOO_LARGE}, status_code=413)
         declared = dict(scope["headers"]).get(b"content-length", b"")
         if declared.isdigit() and int(declared) > self.max_bytes:
-            await JSONResponse({"detail": _TOO_LARGE}, status_code=413)(scope, receive, send)
+            await too_large(scope, receive, send)
             return
         seen = 0
+        response_started = False
 
         async def limited_receive() -> Message:
             nonlocal seen
@@ -34,7 +40,18 @@ class BodyLimitMiddleware:
             if message["type"] == "http.request":
                 seen += len(message.get("body", b""))
                 if seen > self.max_bytes:
-                    raise HTTPException(status_code=413, detail=_TOO_LARGE)
+                    raise _BodyTooLarge
             return message
 
-        await self.app(scope, limited_receive, send)
+        async def tracking_send(message: Message) -> None:
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, tracking_send)
+        except _BodyTooLarge:
+            if response_started:
+                raise
+            await too_large(scope, receive, send)

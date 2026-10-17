@@ -1,5 +1,6 @@
 """Settings, parsed from the environment once at startup."""
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,7 +13,8 @@ class Settings(BaseSettings):
     imgsz: int = 640
     device: str = ""  # empty: CUDA, then MPS, then CPU
     iris_api_key: str = ""  # empty: no key checks anywhere
-    max_upload_bytes: int = 2_000_000
+    # Caps the whole request body, multipart framing included.
+    max_upload_bytes: int = Field(default=2_000_000, gt=0)
 
     @property
     def alert_label_set(self) -> frozenset[str]:
