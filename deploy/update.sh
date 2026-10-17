@@ -47,10 +47,13 @@ unset GIT_DIR GIT_WORK_TREE
 
 ENV_TMP="" # temp copy of the env file while it is being rewritten
 
-# Output is best effort: a hung-up terminal must not stop a rollback under set -e.
-log() { printf '==> %s\n' "$*" || true; }
+# Output is best effort: a hung-up terminal or closed pipe must not stop a rollback under set -e.
+# If a write fails, switch all output to the update log and write the line again there. This
+# is what covers a launcher that starts us with SIGPIPE ignored (the PIPE trap cannot fire then).
+log() { printf '==> %s\n' "$*" 2>/dev/null || { to_update_log; printf '==> %s\n' "$*" || true; }; }
+warn() { printf '%s\n' "$*" >&2 2>/dev/null || { to_update_log; printf '%s\n' "$*" || true; }; }
 die() {
-  printf '%s\n' "$*" >&2 || true
+  warn "$*"
   exit 1
 }
 # The log is created 0600 (only that file; a global umask would change the checkout's modes).
@@ -109,11 +112,11 @@ wait_health() {
     case "$state" in
       ready) return 0 ;;
       authoff)
-        echo "/health reports auth off" >&2
+        warn "/health reports auth off"
         return 1
         ;;
       error:*)
-        echo "model failed to load (${state#error:}); see: journalctl -u iris -n 100" >&2
+        warn "model failed to load (${state#error:}); see: journalctl -u iris -n 100"
         return 1
         ;;
       mismatch:*) reported="${state#mismatch:}" ;;
@@ -121,9 +124,9 @@ wait_health() {
     sleep 1
   done
   if [ -n "$reported" ]; then
-    echo "commit mismatch: expected $expected, /health reported $reported" >&2
+    warn "commit mismatch: expected $expected, /health reported $reported"
   else
-    echo "server did not report ready; see: journalctl -u iris -n 100" >&2
+    warn "server did not report ready; see: journalctl -u iris -n 100"
   fi
   return 1
 }

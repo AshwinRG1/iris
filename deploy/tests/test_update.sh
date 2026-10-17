@@ -505,10 +505,9 @@ end_world
 
 check "hangup: fresh update log is mode 600" eq "$(mode_of "$W/update.log")" 0o600
 
-# --- stdout is a pipe whose reader goes away (ssh without a pty dropped): still rolls back
-new_world 22
-cp "$ENVF" "$W/env.before"
-PREV_SHA="$(head_of)"
+# --- stdout is a pipe whose reader goes away (ssh without a pty dropped): still rolls back.
+# Run twice: SIGPIPE default, and SIGPIPE ignored at startup (as on GitHub runners), where bash
+# cannot trap it and writes fail with EPIPE instead.
 reader_that_leaves() { # wait until the service was restarted, then exit and close the pipe
   local _
   for _ in $(seq 1 100); do
@@ -517,21 +516,32 @@ reader_that_leaves() { # wait until the service was restarted, then exit and clo
   done
   sleep 0.5
 }
-HEALTH_T=4
-upd_args
-set +e
-"${UPD[@]}" bash "$UPDATE" bad 2>&1 | reader_that_leaves
-RC=${PIPESTATUS[0]}
-set -e
-HEALTH_T=""
-check "closed pipe: exits non-zero" ne "$RC" 0
-check "closed pipe: not killed by SIGPIPE" ne "$RC" 141
-check "closed pipe: previous commit checked out" eq "$(head_of)" "$PREV_SHA"
-check "closed pipe: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0a0a0a0
-check "closed pipe: two restarts (deploy and rollback)" eq "$(restarts)" 2
-check "closed pipe: update log says rolled back" log_says "rolled back to ${PREV_SHA:0:7}"
-check "closed pipe: key not in update log" no_key_in_log
-end_world
+closed_pipe_case() { # closed_pipe_case <label> <world> <ignore-sigpipe 0|1>
+  local label="$1"
+  new_world "$2"
+  local ign="$3" launcher=()
+  cp "$ENVF" "$W/env.before"
+  PREV_SHA="$(head_of)"
+  printf 'import os, signal, sys\nsignal.signal(signal.SIGPIPE, signal.SIG_IGN)\nos.execvp(sys.argv[1], sys.argv[1:])\n' >"$W/ign_sigpipe.py"
+  [ "$ign" = 1 ] && launcher=(python3 "$W/ign_sigpipe.py")
+  HEALTH_T=4
+  upd_args
+  set +e
+  "${UPD[@]}" ${launcher[@]+"${launcher[@]}"} bash "$UPDATE" bad 2>&1 | reader_that_leaves
+  RC=${PIPESTATUS[0]}
+  set -e
+  HEALTH_T=""
+  check "$label: exits non-zero" ne "$RC" 0
+  check "$label: not killed by SIGPIPE" ne "$RC" 141
+  check "$label: previous commit checked out" eq "$(head_of)" "$PREV_SHA"
+  check "$label: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0a0a0a0
+  check "$label: two restarts (deploy and rollback)" eq "$(restarts)" 2
+  check "$label: update log says rolled back" log_says "rolled back to ${PREV_SHA:0:7}"
+  check "$label: key not in update log" no_key_in_log
+  end_world
+}
+closed_pipe_case "closed pipe" 22 0
+closed_pipe_case "closed pipe, SIGPIPE ignored" 23 1
 
 # --- TERM during the env rewrite leaves no temp copy of the key
 new_world 15
