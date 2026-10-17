@@ -8,12 +8,12 @@ Iris streams Meta glasses camera frames to a Python server that detects people i
 
 | Person | Owns | Files |
 | --- | --- | --- |
-| A | iOS app: Meta DAT SDK, Mock Device Kit, frame upload, spoken alerts | `app/` |
-| B | Server and infra: FastAPI, alert logic, live view, Vultr deploy | `server/main.py`, `server/config.py` |
-| C | Model: datasets, storm augmentation, YOLO26 fine-tuning, zero-shot baseline, evaluation | `training/`, `data/`, `server/zeroshot.py`, `server/weights/` |
-| D | Integrations and demo: Gemini, command-center page, demo setup, Devpost, pitch | `server/gemini.py`, `server/dashboard/`, `docs/` |
+| A | iOS app, live demo and Devpost: Meta DAT SDK, Mock Device Kit, frame upload, spoken alerts, rubble pile, architecture diagram | `app/`, `docs/` |
+| B | Server, infra and Gemini: FastAPI, alert logic, live view, Gemini descriptions, Vultr deploy | `server/main.py`, `server/config.py`, `server/gemini.py` |
+| C | Model training: datasets, merging, storm augmentation, YOLO26 fine-tuning | `training/merge_datasets.py`, `training/augment.py`, `training/train.py`, `data/merged/`, `server/weights/` |
+| D | Model evaluation: zero-shot baseline, demo footage and clips, test set, results | `server/zeroshot.py`, `training/evaluate.py`, `data/demo_clips/`, `docs/results.csv` |
 
-Each person edits only their own files. B owns `main.py` and wires in C's weights and D's `gemini.py`. The API contract below is the one thing everyone depends on, so change it only after talking.
+Each person edits only their own files. B owns `main.py` and wires in C's weights. The API contract below is the one thing everyone depends on, so change it only after talking.
 
 **API contract:** the phone sends `POST /frame` with a multipart field `file` holding a JPEG (640px wide, quality 70). The server replies:
 
@@ -29,7 +29,7 @@ Stop and check in together at each one. If a checkpoint slips more than 2 hours,
 
 - [ ] **Hour 1.5, Checkpoint 0:** the CameraAccess sample streams a mock feed on the iPhone, and the phone's browser loads `http://<laptop-ip>:8000/docs`.
 - [ ] **Hour 3, Checkpoint 1:** `curl -F "file=@test.jpg" http://localhost:8000/frame` returns JSON, and the app can POST a frame and get a reply.
-- [ ] **Hour 12, Checkpoint 2:** a mock video streams from the app, the server returns detections, and the dashboard shows boxes.
+- [ ] **Hour 12, Checkpoint 2:** a mock video streams from the app, the server returns detections, and the live view shows boxes.
 - [ ] **Hour 16, Checkpoint 3:** full loop on every demo clip: you hear "possible person, left" at the right moments, with no spam.
 - [ ] **Hour 26, Feature freeze:** only bug fixes after this.
 
@@ -56,7 +56,8 @@ A owns everything on the phone: getting frames out of the glasses (or Mock Devic
 - [ ] `FrameUploader.swift`: every 400ms (2 to 3 fps), scale the frame to 640px wide, encode JPEG at 0.7, POST as multipart field `file`. Skip a frame if the last request hasn't returned.
 - [ ] `AlertSpeaker.swift`: wrap `AVSpeechSynthesizer`; speak `alert` whenever it isn't null, stopping any speech already playing.
 - [ ] Status screen: editable server URL (not hardcoded), an on/off toggle, and the last alert text.
-- [ ] Load each h265 demo clip from C into the mock camera feed and confirm it plays.
+- [ ] Load each h265 demo clip from D into the mock camera feed and confirm it plays.
+- [ ] Draw the architecture diagram (glasses, phone, server, model, Gemini) for Devpost and the pitch.
 
 **Hours 12 to 16**
 
@@ -65,23 +66,26 @@ A owns everything on the phone: getting frames out of the glasses (or Mock Devic
 **Hours 16 to 26**
 
 - [ ] Point the server URL at Vultr once B has it running, and retest over cellular.
-- [ ] Show the Gemini description on the status screen once D adds it to the response.
+- [ ] Show the Gemini description on the status screen once B adds it to the response.
 - [ ] Measure app-side latency per frame (send to reply) for the results table.
+- [ ] Build the rubble pile (boxes, blanket or tarp, crumpled paper) and test it under venue lighting.
+- [ ] Draft the Devpost write-up: problem, how it works, architecture diagram, limits, next steps. D adds results.
 
 **Hours 26 to 36**
 
 - [ ] Screen-record the phone for the backup demo video.
-- [ ] Own the live demo: sweeping the camera over the rubble pile and handing the phone to judges.
+- [ ] Open the pitch and run the live demo: sweep the camera over the rubble pile and hand the phone to judges.
 
 ## Person B: server and infra
 
-B owns the running server: receiving frames, alert logic, the live view, and the cloud deploy.
+B owns the running server: receiving frames, alert logic, the live view, Gemini, and the cloud deploy.
 
 **Setup (hours 0 to 1.5)**
 
 - [ ] Create the Wearables Developer Center org and project; send the Application ID to A.
 - [ ] Create a venv and `pip install ultralytics fastapi uvicorn python-multipart opencv-python google-genai`; save it as `server/requirements.txt`.
 - [ ] Smoke test: `yolo predict model=yolo26s.pt source='https://ultralytics.com/images/bus.jpg'`.
+- [ ] Get a Gemini API key from Google AI Studio and Vultr credits through the MLH link; keep them in `.env`, never in git.
 
 **Hours 1.5 to 3**
 
@@ -92,9 +96,10 @@ B owns the running server: receiving frames, alert logic, the live view, and the
 
 **Hours 3 to 12**
 
-- [ ] Add a `/events` endpoint returning recent alerts (time, side, conf) for D's command-center page.
+- [ ] Add a `/events` endpoint returning recent alerts (time, side, conf), and show the alert log on the live view.
 - [ ] Log per-frame server latency.
 - [ ] Stand up the Vultr instance early (Ubuntu, clone, install, open port 8000) so the deploy isn't a last-minute surprise.
+- [ ] `server/gemini.py`: a `describe(jpeg_bytes)` function returning one sentence for a rescuer (people visible, how exposed, nearby hazards). Use a current Flash model from AI Studio and keep descriptions short.
 
 **Hours 12 to 16**
 
@@ -103,74 +108,72 @@ B owns the running server: receiving frames, alert logic, the live view, and the
 **Hours 16 to 26**
 
 - [ ] Swap in C's `best.pt` and update the person labels. Keep `yolo26s.pt` as a fallback.
-- [ ] Wire D's `gemini.py` into `/frame` so it runs on alerts only.
+- [ ] Wire `gemini.py` into `/frame` so it runs on alerts only.
 - [ ] Move the server to Vultr, copy the weights, and send A the URL.
+- [ ] Show Gemini descriptions next to each alert on the live view, and add `description` to the `/frame` response for A.
 
 **Hours 26 to 36**
 
 - [ ] Keep the server up during judging; have the laptop version ready as a fallback.
 
-## Person C: model
+## Person C: model training
 
-C owns the detector: data, storm augmentation, training, the zero-shot baseline, and the results.
+C owns producing the fine-tuned detector and handing `best.pt` to B. Train two versions, with and without storm augmentation, so D can show the augmentation helps.
 
 **Setup (hours 0 to 1.5)**
 
-- [ ] Same venv packages as B, plus `albumentations` and `transformers`.
+- [ ] Venv with `ultralytics albumentations`; confirm a Colab or Vultr GPU works.
 - [ ] Make a Roboflow account and shortlist rubble/victim and flood/person-in-water datasets.
-- [ ] Install ffmpeg; convert one test clip with `ffmpeg -i clip.mp4 -c:v libx265 -tag:v hvc1 clip_h265.mp4` and send it to A.
 
 **Hours 1.5 to 12**
 
-- [ ] `server/zeroshot.py`: OWLv2 (`google/owlv2-base-patch16-ensemble`) with prompts like "human hand", "arm", "person lying down". Give B a function with the same output shape as YOLO.
-- [ ] Export the datasets in YOLO format and merge into `data/merged/` with one class set (`training/merge_datasets.py`).
+- [ ] Export the datasets in YOLO format and merge into `data/merged/` with one class set (`training/merge_datasets.py`). Agree the class names with B.
+- [ ] Hold out a test split and send it to D before training; never train on it.
 - [ ] `training/augment.py`: one storm copy (rain, fog, motion blur, dark, noise) of each training image. Leave val and test unaugmented.
-- [ ] Start training on Colab or a Vultr GPU: `yolo26s.pt`, 50 epochs, imgsz 640, patience 10.
-- [ ] Pick 3 to 4 demo clips not used in training, including one with no people; convert to h265 and give them to A.
+- [ ] Start two runs from `yolo26s.pt` (50 epochs, imgsz 640, patience 10): one plain, one with storm images.
 
 **Hours 12 to 16**
 
-- [ ] Join the full-loop test with A and B; note which clips the stock model misses.
+- [ ] Give B the first usable checkpoint early so the full loop can test it.
 
 **Hours 16 to 26**
 
-- [ ] Hand `best.pt` and the class names to B.
-- [ ] `training/evaluate.py`: stock vs fine-tuned vs zero-shot on the test split, plus detection rate on demo clips; write `docs/results.csv`.
+- [ ] Hand the better `best.pt` and its class names to B; send both checkpoints to D.
+- [ ] If time allows, a second round on the clips D flags as misses.
 
 **Hours 26 to 36**
 
-- [ ] Turn the results into one table or slide with D.
-- [ ] Answer the model questions at the table: training data, storm augmentation, results.
+- [ ] Answer training questions at the table: data sources, class set, storm augmentation.
 
-## Person D: integrations and demo
+## Person D: model evaluation
 
-D owns the sponsor features and everything the judges see beyond the phone.
+D owns proving the model works: the zero-shot baseline, demo clips, and the numbers for the pitch.
 
 **Setup (hours 0 to 1.5)**
 
-- [ ] Get a Gemini API key from Google AI Studio and Vultr credits through the MLH link; share both with B privately, not in git.
-- [ ] Find raw demo footage (collapsed building, flooded street, rain at night) for C to filter.
+- [ ] Venv with `ultralytics transformers opencv-python`; install ffmpeg.
+- [ ] Find raw demo footage: collapsed building, flooded street, rain at night, and one clip with no people.
+- [ ] Convert one clip with `ffmpeg -i clip.mp4 -c:v libx265 -tag:v hvc1 clip_h265.mp4` and send it to A.
 
 **Hours 1.5 to 12**
 
-- [ ] `server/gemini.py`: a `describe(jpeg_bytes)` function returning one sentence for a rescuer (people visible, how exposed, nearby hazards). Use a current Flash model from AI Studio.
-- [ ] `server/dashboard/`: a command-center page that polls B's `/events` and shows the live frame, an alert log, and Gemini descriptions.
-- [ ] Draw the architecture diagram for Devpost and the pitch.
+- [ ] `server/zeroshot.py`: OWLv2 (`google/owlv2-base-patch16-ensemble`) with prompts like "human hand", "arm", "person lying down". Give B a function with the same output shape as YOLO, as a fallback.
+- [ ] Pick 3 to 4 demo clips not in C's training data; convert to h265 and give them to A.
+- [ ] `training/evaluate.py`: run any model on C's test split and the demo clips; report mAP, detection rate on clips, and ms per frame.
+- [ ] Run it on stock YOLO26 and zero-shot now, so the baseline numbers are ready.
 
 **Hours 12 to 16**
 
-- [ ] Test `gemini.py` on frames from the full loop; keep descriptions short enough to read at a glance.
+- [ ] Join the full-loop test; note which clips and moments the model misses and tell C.
 
 **Hours 16 to 26**
 
-- [ ] Hand `gemini.py` to B to wire in; point the dashboard at the Vultr URL.
-- [ ] Build the rubble pile and test it under venue lighting.
-- [ ] Draft the Devpost write-up.
+- [ ] Evaluate both of C's checkpoints; write `docs/results.csv` comparing stock, zero-shot, plain fine-tune and storm fine-tune.
 
 **Hours 26 to 36**
 
-- [ ] Record the backup demo video with A.
-- [ ] Lead the pitch: problem, live demo handoff to A, results from C, limits and next steps.
+- [ ] Turn the results into one table for the Devpost and pitch; add it to A's draft.
+- [ ] Present the results in the pitch.
 
 ## Shared
 
@@ -179,9 +182,9 @@ These belong to everyone; the owner listed in each person's section leads, the r
 - [ ] Each person creates their own GitHub token; never share tokens or commit `local.properties`, `.env` or keys.
 - [ ] Commit and push after every working change. Weights, datasets and demo clips go in a shared Google Drive folder, not git.
 - [ ] Build the rubble pile at the table (boxes, blanket or tarp, crumpled paper) and test it under venue lighting.
-- [ ] Record the backup demo video: phone screen, dashboard and audio, start to finish. Keep it open in a tab during judging.
+- [ ] Record the backup demo video: phone screen, live view and audio, start to finish. Keep it open in a tab during judging.
 - [ ] Devpost write-up: problem, how it works, architecture diagram, results table, limits, next steps. Select AI/ML, Vultr and Gemini.
-- [ ] Practice the 3-minute pitch at least 5 times: D opens, A runs the live demo, C covers results, B handles infra questions.
+- [ ] Practice the 3-minute pitch at least 5 times: A opens and runs the live demo, C covers training, D covers results, B handles infra and Gemini questions.
 - [ ] Sleep in shifts before judging, two at a time, so someone always has the server and app running.
 
 **If you fall behind, cut in this order:**
