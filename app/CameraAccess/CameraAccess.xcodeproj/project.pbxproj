@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1A1500000000000000000009 /* MockVideoPreparer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A150000000000000000000A /* MockVideoPreparer.swift */; };
+		1A150000000000000000000B /* iris_nobframes_720p.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 1A150000000000000000000C /* iris_nobframes_720p.mp4 */; };
 		1A1500000000000000000001 /* FrameUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1500000000000000000002 /* FrameUploader.swift */; };
 		1A1500000000000000000003 /* DetectionOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1500000000000000000004 /* DetectionOverlayView.swift */; };
 		1A1500000000000000000005 /* FrameUploadStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1500000000000000000006 /* FrameUploadStatusView.swift */; };
@@ -75,6 +77,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		1A150000000000000000000A /* MockVideoPreparer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockVideoPreparer.swift; sourceTree = "<group>"; };
+		1A150000000000000000000C /* iris_nobframes_720p.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = iris_nobframes_720p.mp4; sourceTree = "<group>"; };
 		1A1500000000000000000002 /* FrameUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameUploader.swift; sourceTree = "<group>"; };
 		1A1500000000000000000004 /* DetectionOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectionOverlayView.swift; sourceTree = "<group>"; };
 		1A1500000000000000000006 /* FrameUploadStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameUploadStatusView.swift; sourceTree = "<group>"; };
@@ -233,6 +237,7 @@
 		D7A0000000000000000000F0 /* Media */ = {
 			isa = PBXGroup;
 			children = (
+				1A150000000000000000000A /* MockVideoPreparer.swift */,
 				1A1500000000000000000002 /* FrameUploader.swift */,
 				D7A0000000000000000000AB /* AudioCaptureHandler.swift */,
 				D7A0000000000000000000A9 /* AudioInputHandler.swift */,
@@ -246,6 +251,7 @@
 		E66CC01A2F3E1A9300B07379 /* TestResources */ = {
 			isa = PBXGroup;
 			children = (
+				1A150000000000000000000C /* iris_nobframes_720p.mp4 */,
 				E66CC0182F3E1A9300B07379 /* plant.mp4 */,
 				E66CC0192F3E1A9300B07379 /* plant.png */,
 			);
@@ -382,6 +388,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1A150000000000000000000B /* iris_nobframes_720p.mp4 in Resources */,
 				E66CC01B2F3E1A9300B07379 /* plant.png in Resources */,
 				E66CC01C2F3E1A9300B07379 /* plant.mp4 in Resources */,
 				8FD96B8D2E6F0A9800F56AB1 /* Assets.xcassets in Resources */,
@@ -410,6 +417,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1A1500000000000000000009 /* MockVideoPreparer.swift in Sources */,
 				1A1500000000000000000001 /* FrameUploader.swift in Sources */,
 				1A1500000000000000000003 /* DetectionOverlayView.swift in Sources */,
 				1A1500000000000000000005 /* FrameUploadStatusView.swift in Sources */,
