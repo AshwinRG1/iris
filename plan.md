@@ -29,7 +29,7 @@ Stop and check in together at each one. If a checkpoint slips more than 2 hours,
 
 - [ ] **Hour 1.5, Checkpoint 0:** the CameraAccess sample streams a mock feed on the iPhone, and the phone's browser loads `http://<laptop-ip>:8000/docs`.
 - [ ] **Hour 3, Checkpoint 1:** `curl -F "file=@test.jpg" http://localhost:8000/frame` returns JSON, and the app can POST a frame and get a reply.
-- [ ] **Hour 12, Checkpoint 2:** a mock video streams from the app, the server returns detections, and the dashboard shows boxes.
+- [ ] **Hour 12, Checkpoint 2:** a mock video streams from the app, the server returns detections, and the live view shows boxes.
 - [ ] **Hour 16, Checkpoint 3:** full loop on every demo clip: you hear "possible person, left" at the right moments, with no spam.
 - [ ] **Hour 26, Feature freeze:** only bug fixes after this.
 
@@ -56,9 +56,8 @@ A owns everything on the phone: getting frames out of the glasses (or Mock Devic
 - [ ] `FrameUploader.swift`: every 400ms (2 to 3 fps), scale the frame to 640px wide, encode JPEG at 0.7, POST as multipart field `file`. Skip a frame if the last request hasn't returned.
 - [ ] `AlertSpeaker.swift`: wrap `AVSpeechSynthesizer`; speak `alert` whenever it isn't null, stopping any speech already playing.
 - [ ] Status screen: editable server URL (not hardcoded), an on/off toggle, and the last alert text.
-- [ ] Load each h265 demo clip from C into the mock camera feed and confirm it plays.
-
-* [ ] Draw the architecture diagram (glasses, phone, server, model, Gemini) for Devpost and the pitch.
+- [ ] Load each h265 demo clip from D into the mock camera feed and confirm it plays.
+- [ ] Draw the architecture diagram (glasses, phone, server, model, Gemini) for Devpost and the pitch.
 
 **Hours 12 to 16**
 
@@ -69,9 +68,8 @@ A owns everything on the phone: getting frames out of the glasses (or Mock Devic
 - [ ] Point the server URL at Vultr once B has it running, and retest over cellular.
 - [ ] Show the Gemini description on the status screen once B adds it to the response.
 - [ ] Measure app-side latency per frame (send to reply) for the results table.
-
-* [ ] Build the rubble pile (boxes, blanket or tarp, crumpled paper) and test it under venue lighting.
-* [ ] Draft the Devpost write-up: problem, how it works, architecture diagram, limits, next steps. D adds results.
+- [ ] Build the rubble pile (boxes, blanket or tarp, crumpled paper) and test it under venue lighting.
+- [ ] Draft the Devpost write-up: problem, how it works, architecture diagram, limits, next steps. D adds results.
 
 **Hours 26 to 36**
 
@@ -80,15 +78,14 @@ A owns everything on the phone: getting frames out of the glasses (or Mock Devic
 
 ## Person B: server and infra
 
-B owns the running server: receiving frames, alert logic, the live view, and the cloud deploy.
+B owns the running server: receiving frames, alert logic, the live view, Gemini, and the cloud deploy.
 
 **Setup (hours 0 to 1.5)**
 
 - [ ] Create the Wearables Developer Center org and project; send the Application ID to A.
 - [ ] Create a venv and `pip install ultralytics fastapi uvicorn python-multipart opencv-python google-genai`; save it as `server/requirements.txt`.
 - [ ] Smoke test: `yolo predict model=yolo26s.pt source='https://ultralytics.com/images/bus.jpg'`.
-
-* [ ] Get a Gemini API key from Google AI Studio and Vultr credits through the MLH link; keep them in `.env`, never in git.
+- [ ] Get a Gemini API key from Google AI Studio and Vultr credits through the MLH link; keep them in `.env`, never in git.
 
 **Hours 1.5 to 3**
 
@@ -102,8 +99,7 @@ B owns the running server: receiving frames, alert logic, the live view, and the
 - [ ] Add a `/events` endpoint returning recent alerts (time, side, conf), and show the alert log on the live view.
 - [ ] Log per-frame server latency.
 - [ ] Stand up the Vultr instance early (Ubuntu, clone, install, open port 8000) so the deploy isn't a last-minute surprise.
-
-* [ ] `server/gemini.py`: a `describe(jpeg_bytes)` function returning one sentence for a rescuer (people visible, how exposed, nearby hazards). Use a current Flash model from AI Studio and keep descriptions short.
+- [ ] `server/gemini.py`: a `describe(jpeg_bytes)` function returning one sentence for a rescuer (people visible, how exposed, nearby hazards). Use a current Flash model from AI Studio and keep descriptions short.
 
 **Hours 12 to 16**
 
@@ -114,8 +110,7 @@ B owns the running server: receiving frames, alert logic, the live view, and the
 - [ ] Swap in C's `best.pt` and update the person labels. Keep `yolo26s.pt` as a fallback.
 - [ ] Wire `gemini.py` into `/frame` so it runs on alerts only.
 - [ ] Move the server to Vultr, copy the weights, and send A the URL.
-
-* [ ] Show Gemini descriptions next to each alert on the live view, and add `description` to the `/frame` response for A.
+- [ ] Show Gemini descriptions next to each alert on the live view, and add `description` to the `/frame` response for A.
 
 **Hours 26 to 36**
 
@@ -187,7 +182,7 @@ These belong to everyone; the owner listed in each person's section leads, the r
 - [ ] Each person creates their own GitHub token; never share tokens or commit `local.properties`, `.env` or keys.
 - [ ] Commit and push after every working change. Weights, datasets and demo clips go in a shared Google Drive folder, not git.
 - [ ] Build the rubble pile at the table (boxes, blanket or tarp, crumpled paper) and test it under venue lighting.
-- [ ] Record the backup demo video: phone screen, dashboard and audio, start to finish. Keep it open in a tab during judging.
+- [ ] Record the backup demo video: phone screen, live view and audio, start to finish. Keep it open in a tab during judging.
 - [ ] Devpost write-up: problem, how it works, architecture diagram, results table, limits, next steps. Select AI/ML, Vultr and Gemini.
 - [ ] Practice the 3-minute pitch at least 5 times: A opens and runs the live demo, C covers training, D covers results, B handles infra and Gemini questions.
 - [ ] Sleep in shifts before judging, two at a time, so someone always has the server and app running.
