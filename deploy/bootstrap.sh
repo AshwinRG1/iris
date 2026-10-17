@@ -66,6 +66,19 @@ else:
 '
 }
 
+# A fresh Vultr Ubuntu image has ufw active with only 22 open. Open 80 (ACME, HTTP->HTTPS) and
+# 443 for Caddy. `ufw allow` skips a rule that already exists, so re-runs change nothing.
+# Without ufw, or with it inactive, do nothing. Never open 8000: uvicorn is localhost-only.
+open_web_ports() {
+  local status
+  command -v ufw >/dev/null 2>&1 || return 0
+  status="$(ufw status 2>/dev/null || true)"
+  grep -qx 'Status: active' <<<"$status" || return 0
+  log "ufw active: allowing 80/tcp and 443/tcp"
+  ufw allow 80/tcp
+  ufw allow 443/tcp
+}
+
 [ "$(id -u)" -eq 0 ] || die "run as root"
 command -v python3 >/dev/null 2>&1 || die "python3 not found; use Ubuntu 24.04 LTS or newer"
 python3 -c 'import sys; sys.exit(sys.version_info < (3, 12))' ||
@@ -185,6 +198,7 @@ is_ipv4 "$IP" || die "bad public IP: '$IP'"
 HOST="${IP//./-}.nip.io"
 sed "s|__HOST__|$HOST|" "$DEPLOY_DIR/Caddyfile" >/etc/caddy/Caddyfile
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+open_web_ports
 
 log "services"
 # Caddy's admin API listens on /run/caddy/admin.sock (see the Caddyfile), so the iris process
