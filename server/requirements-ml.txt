@@ -3,3 +3,4 @@
 #   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 -r requirements.txt
 ultralytics==8.4.178
+onnxruntime==1.31.0
