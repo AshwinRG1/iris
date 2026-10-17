@@ -1,0 +1,5 @@
+ultralytics
+albumentations
+opencv-python
+numpy
+pyyaml
