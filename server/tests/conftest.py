@@ -1,12 +1,24 @@
 import io
 import threading
+import time
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from PIL import Image
 
+from detector import NO_MODEL, Loaded
 from domain import Box, Detection
+
+
+def wait_for(condition: Callable[[], bool], timeout_s: float = 5.0) -> None:
+    """Poll until `condition()` is true; fail the test after `timeout_s`."""
+    deadline = time.monotonic() + timeout_s
+    while not condition():
+        if time.monotonic() > deadline:
+            raise AssertionError(f"condition not met within {timeout_s} s")
+        time.sleep(0.01)
 
 
 def jpeg_bytes(width: int = 64, height: int = 48) -> bytes:
@@ -27,8 +39,8 @@ class FakeDetector:
         self.script = script or []
         self.detect_threads: list[int] = []
 
-    def load(self) -> str:
-        return self.device
+    def load(self) -> Loaded:
+        return Loaded(self.device, self.name, NO_MODEL)
 
     def detect(self, image: Image.Image) -> list[Detection]:
         self.detect_threads.append(threading.get_ident())
