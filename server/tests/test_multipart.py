@@ -105,14 +105,139 @@ def test_422_never_repeats_the_upload() -> None:
     assert MARKER not in r2.text
 
 
-def test_events_since_422_is_a_string_detail() -> None:
+def test_events_since_422_names_the_field_and_echoes_nothing() -> None:
     with _client() as c:
         r = c.get("/events", params={"since": -1})
         r2 = c.get("/events", params={"since": MARKER})
     assert r.status_code == 422
     assert r2.status_code == 422
-    assert isinstance(r.json()["detail"], str)
+    assert "since" in r.json()["detail"]
+    assert "since" in r2.json()["detail"]
     assert MARKER not in r2.text
+    assert "input" not in r.text
+    assert "ctx" not in r.text
+
+
+def _multipart(boundary: str, *parts: tuple[str, bytes], closing: bool = True) -> bytes:
+    body = b""
+    for headers, data in parts:
+        body += f"--{boundary}\r\n{headers}\r\n\r\n".encode() + data + b"\r\n"
+    return body + (f"--{boundary}--\r\n".encode() if closing else b"")
+
+
+FILE_HEADERS = 'Content-Disposition: form-data; name="file"'
+
+
+def test_boundary_over_256_bytes_is_422_not_500() -> None:
+    boundary = "b" * 300
+    body = _multipart(boundary, (FILE_HEADERS, jpeg_bytes()))
+    with _client() as c:
+        _ready(c)
+        r = c.post(
+            "/frame",
+            content=body,
+            headers={"content-type": f"multipart/form-data; boundary={boundary}"},
+        )
+    assert r.status_code == 422
+
+
+def test_a_thousand_tiny_parts_before_file_is_422() -> None:
+    parts = [(f'Content-Disposition: form-data; name="p{i}"', b"x") for i in range(1000)]
+    body = _multipart("bb", *parts, (FILE_HEADERS, jpeg_bytes()))
+    with _client() as c:
+        _ready(c)
+        r = c.post(
+            "/frame", content=body, headers={"content-type": "multipart/form-data; boundary=bb"}
+        )
+    assert r.status_code == 422
+
+
+def test_parts_after_file_are_not_parsed() -> None:
+    # 1000 parts after `file` would trip the part cap if they were parsed.
+    parts = [(f'Content-Disposition: form-data; name="p{i}"', b"x") for i in range(1000)]
+    body = _multipart("bb", (FILE_HEADERS, jpeg_bytes()), *parts)
+    with _client() as c:
+        _ready(c)
+        r = c.post(
+            "/frame", content=body, headers={"content-type": "multipart/form-data; boundary=bb"}
+        )
+    assert r.status_code == 200, r.text
+
+
+def test_media_type_and_boundary_name_are_case_insensitive() -> None:
+    body = _multipart("bb", (FILE_HEADERS, jpeg_bytes()))
+    with _client() as c:
+        _ready(c)
+        r = c.post(
+            "/frame", content=body, headers={"content-type": "MULTIPART/FORM-DATA; Boundary=bb"}
+        )
+    assert r.status_code == 200, r.text
+
+
+def test_file_part_cut_off_mid_data_is_422() -> None:
+    body = _multipart("bb", (FILE_HEADERS, jpeg_bytes()), closing=False)[:-40]
+    with _client() as c:
+        _ready(c)
+        r = c.post(
+            "/frame", content=body, headers={"content-type": "multipart/form-data; boundary=bb"}
+        )
+    assert r.status_code == 422
+
+
+def test_crlf_and_0xff_payload_is_byte_identical(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _record_decoder_input(monkeypatch)
+    sent = b"\xff\xd8\r\n\xff\xff\r\n\r\n--bb\r\n\xff\x00\r\n"
+    with _client() as c:
+        _ready(c)
+        for filename in (None, "f.jpg"):
+            c.post("/frame", files={"file": (filename, sent, "image/jpeg")})
+    assert seen == [sent, sent]
+
+
+def test_chunked_body_over_limit_is_413_once_ready() -> None:
+    def chunks() -> Any:
+        for _ in range(30):
+            yield b"\0" * 100_000
+
+    with _client() as c:
+        _ready(c)
+        r = c.post(
+            "/frame",
+            content=chunks(),
+            headers={"content-type": "multipart/form-data; boundary=bb"},
+        )
+    assert r.status_code == 413
+
+
+def test_lying_small_content_length_with_large_body_is_413_once_ready() -> None:
+    body = _multipart("bb", (FILE_HEADERS, b"\0" * 3_000_000))
+    with _client() as c:
+        _ready(c)
+        r = c.post(
+            "/frame",
+            content=body,
+            headers={
+                "content-type": "multipart/form-data; boundary=bb",
+                "content-length": "100",
+            },
+        )
+    assert r.status_code == 413
+
+
+def test_openapi_documents_the_upload_and_string_422() -> None:
+    with _client() as c:
+        spec = c.get("/openapi.json").json()
+    op = spec["paths"]["/frame"]["post"]
+    body = op["requestBody"]
+    assert body["required"] is True
+    schema = body["content"]["multipart/form-data"]["schema"]
+    assert schema["required"] == ["file"]
+    assert schema["properties"]["file"] == {"type": "string", "format": "binary"}
+    ref = op["responses"]["422"]["content"]["application/json"]["schema"]["$ref"]
+    assert spec["components"]["schemas"][ref.rsplit("/", 1)[1]]["properties"]["detail"] == {
+        "type": "string",
+        "title": "Detail",
+    }
 
 
 def test_body_over_limit_without_filename_is_413() -> None:

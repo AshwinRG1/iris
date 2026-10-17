@@ -74,7 +74,7 @@ Errors use FastAPI's `{"detail": "..."}` shape. The app should treat any non-200
 | 404 | Wrong path, such as `/frame/frame`. Clients treat it like any non-200. |
 | 405 | Wrong method, such as GET on `/frame`. |
 | 413 | The body is over 2 MB. |
-| 422 | The `file` part is missing, the body is not multipart, or the form is malformed. `detail` is a short fixed string and never repeats anything from the request. |
+| 422 | Any request that fails validation: no `file` part, a body that is not valid multipart, or a bad query value. `detail` is a short string naming the field and reason, never request data. If `file` appears twice, the first wins. |
 | 503 | The model hasn't finished loading yet. |
 
 When Caddy itself rejects a chunked body over 2 MB, its 413 has an empty body, not `{"detail": ...}`. Clients must not depend on error bodies; the app already ignores them.

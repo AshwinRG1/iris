@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -82,9 +83,11 @@ def create_app(
     return app
 
 
-async def _short_422(request: Request, exc: Exception) -> JSONResponse:
-    # FastAPI's default 422 copies the offending input back; ours is a fixed string.
-    return JSONResponse({"detail": "request has a missing or invalid field"}, status_code=422)
+async def _short_422(_request: Request, exc: Exception) -> JSONResponse:
+    # FastAPI's default 422 copies the offending input back. This names where and why only.
+    errors = cast(RequestValidationError, exc).errors()  # registered for this type only
+    reasons = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in errors)
+    return JSONResponse({"detail": reasons}, status_code=422)
 
 
 class _MonotonicClock:
