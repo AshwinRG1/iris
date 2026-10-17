@@ -25,6 +25,7 @@ struct CameraView: View {
   @State private var viewModel: CameraViewModel
   @Bindable var wearablesVM: WearablesViewModel
   @State private var showSettingsMenu: Bool = false
+  @State private var showUploadStatus: Bool = false
   @State private var isLaunchingUpdate: Bool = false
 
   init(wearables: WearablesInterface, wearablesVM: WearablesViewModel) {
@@ -103,6 +104,9 @@ struct CameraView: View {
       Text("To preview your glasses camera, you'll be taken to the Meta AI app to grant access, then returned here.")
     }
     .navigationBarHidden(true)
+    .sheet(isPresented: $showUploadStatus) {
+      FrameUploadStatusView(uploader: viewModel.frameUploader)
+    }
   }
 
   // MARK: - Preview background
@@ -116,6 +120,9 @@ struct CameraView: View {
         // while the stream tears down — so the paused badge / stop loader overlays
         // the preview rather than the start-streaming screen.
         LivePreviewView(viewModel: viewModel)
+          .overlay {
+            DetectionOverlayView(uploader: viewModel.frameUploader)
+          }
         if viewModel.isPaused {
           // Dim the frozen frame so the badge reads as intentionally paused.
           Color.black.opacity(0.35)
@@ -228,7 +235,12 @@ struct CameraView: View {
 
       Spacer()
 
-      // Top bar carries only the app-level settings/Disconnect control.
+      iconButton("waveform.path.ecg", id: "iris_status_button") {
+        showUploadStatus = true
+      }
+      .accessibilityLabel("Iris status")
+
+      // App-level settings/Disconnect control.
       iconButton("gearshape", id: "settings_button") {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
           showSettingsMenu.toggle()
