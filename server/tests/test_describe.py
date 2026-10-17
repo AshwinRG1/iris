@@ -2,11 +2,11 @@
 
 import io
 import logging
-import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from conftest import (
     FakeDescriber,
@@ -22,6 +22,7 @@ from PIL import Image
 from pydantic import SecretStr
 
 from config import Settings
+from deps import Runtime
 from domain import Detection
 from main import create_app
 
@@ -37,6 +38,8 @@ class Rig:
         app = create_app(self.detector, describer, clock, FakeWallClock(), settings)
         self.clock = clock
         self.client = TestClient(app)
+        self.runtime: Runtime = app.state.runtime
+        self.describer = describer
 
     def frame(self, t: int, dets: list[Detection]) -> dict[str, Any]:
         self.detector.script.append(dets)
@@ -53,14 +56,20 @@ class Rig:
         return reply
 
     def events(self) -> list[dict[str, Any]]:
-        events: list[dict[str, Any]] = self.client.get("/events?after=0").json()["events"]
+        events: list[dict[str, Any]] = self.client.get("/events?since=0").json()["events"]
         return events
 
     def described(self, n: int) -> None:
         wait_for(lambda: sum(e["description"] is not None for e in self.events()) >= n)
 
-    def quiet(self) -> None:
-        time.sleep(0.15)  # a call that would start has started by now
+    def idle(self) -> None:
+        wait_for(lambda: not self.runtime.describe_tasks)
+
+    def release(self) -> None:
+        """Let a gated describer answer. The gate belongs to the app's loop."""
+        assert self.client.portal is not None and self.describer is not None
+        assert self.describer.gate is not None
+        self.client.portal.call(self.describer.gate.set)
 
 
 Make = Callable[..., Rig]
@@ -99,7 +108,7 @@ def test_scenario_12_a_describer_slower_than_the_timeout_leaves_null(
     make: Make, caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.WARNING, logger="iris")
-    rig = make(FakeDescriber("late", delay_s=2), gemini_timeout_s=0.1)
+    rig = make(FakeDescriber("late", gated=True), gemini_timeout_s=0.1)
     rig.alert_at(1000, [LEFT])
     wait_for(lambda: "TimeoutError" in caplog.text)
     assert rig.events()[0]["description"] is None
@@ -150,10 +159,11 @@ def test_unchanged_scene_gets_no_new_call_inside_or_after_the_cooldown(make: Mak
     rig = make(d)
     rig.alert_at(1000, [LEFT])
     rig.described(1)
+    rig.idle()
     rig.alert_at(11_000, [LEFT])  # same-side repeat, inside the 15 s describe cooldown
-    rig.quiet()
+    assert not rig.runtime.describe_tasks  # a task is created inside the /frame handler
     rig.alert_at(21_000, [LEFT])  # after the cooldown, but the same scene
-    rig.quiet()
+    assert not rig.runtime.describe_tasks
     assert len(d.calls) == 1
 
 
@@ -174,8 +184,9 @@ def test_changed_scene_inside_the_cooldown_makes_no_call(make: Make) -> None:
     rig = make(d)
     rig.alert_at(1000, [LEFT])
     rig.described(1)
+    rig.idle()
     rig.alert_at(6000, [RIGHT])
-    rig.quiet()
+    assert not rig.runtime.describe_tasks
     assert len(d.calls) == 1
 
 
@@ -184,20 +195,22 @@ def test_failed_attempt_still_starts_the_cooldown(make: Make) -> None:
     rig = make(d)
     rig.alert_at(1000, [LEFT])
     wait_for(lambda: len(d.calls) == 1)
+    rig.idle()
     rig.alert_at(6000, [RIGHT])
-    rig.quiet()
+    assert not rig.runtime.describe_tasks
     assert len(d.calls) == 1
 
 
 def test_second_alert_while_one_is_in_flight_starts_no_second_call(make: Make) -> None:
-    d = FakeDescriber("slow", delay_s=0.6)
-    rig = make(d, describe_cooldown_s=0)
+    d = FakeDescriber("slow", gated=True)
+    rig = make(d, describe_cooldown_s=0, describe_max_age_s=10)
     rig.alert_at(1000, [LEFT])
     wait_for(lambda: len(d.calls) == 1)
     rig.alert_at(6000, [RIGHT])
-    rig.quiet()
+    assert len(rig.runtime.describe_tasks) == 1 and len(d.calls) == 1
+    rig.release()
+    rig.idle()
     assert len(d.calls) == 1
-    rig.described(1)
 
 
 def test_stale_answer_is_discarded(make: Make, caplog: pytest.LogCaptureFixture) -> None:
@@ -224,13 +237,77 @@ def test_description_ids_increase_and_show_only_on_the_latest_fresh_event(make: 
     assert (old["description"], old["description_id"]) == (None, None)
 
 
-def test_a_newer_event_without_a_description_hides_the_older_one(make: Make) -> None:
+def test_answer_for_an_event_that_is_no_longer_the_latest_is_dropped(
+    make: Make, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.WARNING, logger="iris")
+    d = FakeDescriber("said", gated=True)
+    rig = make(d, describe_max_age_s=10)
+    rig.alert_at(1000, [LEFT])
+    wait_for(lambda: len(d.calls) == 1)
+    rig.alert_at(6000, [RIGHT])  # event 2; no call may start while event 1 is in flight
+    rig.release()
+    rig.idle()
+    assert "a newer alert fired" in caplog.text
+    assert [e["description"] for e in rig.events()] == [None, None]
+    assert rig.frame(7000, [])["description_id"] is None
+    # The dropped answer never marked its scene as described.
+    rig.alert_at(21_000, [LEFT])
+    wait_for(lambda: len(d.calls) == 2)
+    rig.idle()
+
+
+def test_same_scene_is_described_again_after_a_failure(make: Make) -> None:
+    d = FakeDescriber(error=RuntimeError("down"))
+    rig = make(d)
+    rig.alert_at(1000, [LEFT])
+    wait_for(lambda: len(d.calls) == 1)
+    rig.idle()
+    d.error, d.text = None, "back"
+    rig.alert_at(21_000, [LEFT])
+    rig.described(1)
+    assert len(d.calls) == 2
+
+
+def test_events_since_returns_the_described_copy(make: Make) -> None:
     rig = make(FakeDescriber("said"))
     rig.alert_at(1000, [LEFT])
+    assert rig.client.get("/events?since=0").json()["events"][0]["description"] in (None, "said")
     rig.described(1)
-    rig.alert_at(6000, [RIGHT])  # no description allowed inside the cooldown
-    rig.quiet()
-    assert rig.frame(7000, [])["description_id"] is None
+    later = rig.client.get("/events?since=0").json()["events"]
+    assert (later[0]["id"], later[0]["description"], later[0]["description_id"]) == (1, "said", 1)
+
+
+def test_http_status_error_logs_the_status_code_only(
+    make: Make, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.WARNING, logger="iris")
+    request = httpx.Request("POST", f"https://example.test/?key={SECRET}")
+    error = httpx.HTTPStatusError(
+        f"boom {SECRET}", request=request, response=httpx.Response(429, request=request)
+    )
+    rig = make(FakeDescriber(error=error))
+    rig.alert_at(1000, [LEFT])
+    wait_for(lambda: "HTTPStatusError" in caplog.text)
+    assert "429" in caplog.text
+    assert SECRET not in caplog.text and "boom" not in caplog.text
+    rig.idle()
+
+
+def test_shutdown_cancels_a_running_description_and_closes_the_describer() -> None:
+    d = FakeDescriber("never", gated=True)
+    rig = Rig(d, SettableClock(0))
+    with rig.client:
+        rig.alert_at(1000, [LEFT])
+        wait_for(lambda: len(d.calls) == 1)
+    assert d.cancelled and d.closed
+    assert not rig.runtime.describe_tasks
+
+
+def test_health_stays_ready_and_never_shows_the_key(make: Make) -> None:
+    rig = make(FakeDescriber("x"))
+    wait_for(lambda: rig.client.get("/health").json()["ready"])
+    assert SECRET not in rig.client.get("/health").text
 
 
 def test_described_event_is_logged_a_second_time(make: Make, log_dir: Path) -> None:
@@ -245,6 +322,6 @@ def test_described_event_is_logged_a_second_time(make: Make, log_dir: Path) -> N
 def test_no_describer_means_descriptions_are_off(make: Make) -> None:
     rig = make(None)
     reply = rig.alert_at(1000, [LEFT])
-    rig.quiet()
+    assert not rig.runtime.describe_tasks
     assert reply["description"] is None
     assert rig.events()[0]["description_id"] is None

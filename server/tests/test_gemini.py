@@ -58,6 +58,52 @@ def test_parse_gives_empty_text_when_nothing_came_back(payload: dict[str, object
     assert gemini.parse_text(payload) == ""
 
 
+def test_parse_tolerates_a_part_without_text() -> None:
+    assert gemini.parse_text(_reply({"text": None}, {"text": "ok"}, {"inlineData": {}})) == "ok"
+
+
+def test_parse_cuts_over_long_text_at_the_last_space() -> None:
+    assert gemini.parse_text(_reply({"text": "a" * 295 + " bbbbbbbbbb"})) == "a" * 295
+
+
+def test_the_http_timeout_follows_the_gemini_timeout() -> None:
+    d = gemini.GeminiDescriber("k", "m", "s", timeout_s=3)
+    assert d._client.timeout.read == 4.0
+    asyncio.run(d.aclose())
+
+
+def test_build_describer_strips_the_key_and_passes_the_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[tuple[object, ...]] = []
+
+    class Spy:
+        def __init__(self, *args: object) -> None:
+            seen.append(args)
+
+    monkeypatch.setattr("main.GeminiDescriber", Spy)
+    build_describer(
+        _settings(tmp_path, gemini_api_key=SecretStr(f"  {SECRET}\n"), gemini_timeout_s=2)
+    )
+    assert seen == [(SECRET, "gemini-3.8-flash", "system text", 2.0)]
+
+
+def test_build_describer_logs_one_info_line_when_on(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger="iris")
+    d = build_describer(_settings(tmp_path, gemini_timeout_s=2))
+    assert d is not None
+    asyncio.run(d.aclose())  # type: ignore[attr-defined]
+    lines = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
+    assert len(lines) == 1 and "gemini-3.8-flash" in lines[0] and "2" in lines[0]
+    assert SECRET not in caplog.text
+
+
+def test_a_blank_key_means_off(tmp_path: Path) -> None:
+    assert build_describer(_settings(tmp_path, gemini_api_key=SecretStr(" \t"))) is None
+
+
 def _settings(tmp_path: Path, **kw: object) -> Settings:
     prompt = tmp_path / "p.txt"
     prompt.write_text("system text")
@@ -116,6 +162,7 @@ def test_the_key_is_hidden_in_the_settings_repr() -> None:
         {"gemini_timeout_s": float("inf")},
         {"describe_cooldown_s": -1},
         {"describe_max_age_s": 0},
+        {"describe_max_age_s": 10.5},
         {"describe": "maybe"},
     ],
 )

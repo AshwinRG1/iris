@@ -17,7 +17,7 @@ from config import Settings
 from deps import Clock, Deps, Runtime, WallClock, get_deps
 from detector import DetectFn, Detector, FallbackDetector, YoloDetector, ZeroShotDetector
 from frame_routes import router as frame_router
-from gemini import Describer, GeminiDescriber
+from gemini import Closable, Describer, GeminiDescriber
 from limits import BodyLimitMiddleware
 from live_routes import router as live_router
 from store import JsonlLog
@@ -53,17 +53,18 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     task = asyncio.create_task(load_model())
     yield
-    task.cancel()
-    # A load already running in its thread can't be interrupted; shutdown doesn't wait for it.
-    await asyncio.gather(task, return_exceptions=True)
-    runtime.slot.shutdown(wait=False, cancel_futures=True)
-    pending = list(runtime.describe_tasks)
-    for t in pending:
-        t.cancel()
-    await asyncio.gather(*pending, return_exceptions=True)
-    aclose = getattr(deps.describer, "aclose", None)
-    if aclose is not None:
-        await aclose()
+    try:
+        task.cancel()
+        # A load already running in its thread can't be interrupted; shutdown doesn't wait for it.
+        await asyncio.gather(task, return_exceptions=True)
+        runtime.slot.shutdown(wait=False, cancel_futures=True)
+        pending = list(runtime.describe_tasks)
+        for t in pending:
+            t.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+    finally:
+        if isinstance(deps.describer, Closable):
+            await deps.describer.aclose()
 
 
 def create_app(
@@ -116,7 +117,7 @@ def build_describer(s: Settings) -> Describer | None:
     if s.describe == "off":
         log.info("DESCRIBE=off; descriptions are off")
         return None
-    key = s.gemini_api_key.get_secret_value()
+    key = s.gemini_api_key.get_secret_value().strip()
     if not key:
         log.warning("GEMINI_API_KEY is not set; descriptions are off")
         return None
@@ -134,10 +135,18 @@ def build_describer(s: Settings) -> Describer | None:
         )
         return None
     try:
-        return GeminiDescriber(key, s.gemini_model.strip(), prompt)
+        describer = GeminiDescriber(key, s.gemini_model.strip(), prompt, s.gemini_timeout_s)
     except Exception as e:
         log.warning("Gemini client could not be built (%s); descriptions are off", type(e).__name__)
         return None
+    log.info(
+        "descriptions on: model %s, timeout %.1f s, cooldown %.0f s, max age %.1f s",
+        s.gemini_model.strip(),
+        s.gemini_timeout_s,
+        s.describe_cooldown_s,
+        s.describe_max_age_s,
+    )
+    return describer
 
 
 def _import_zeroshot() -> DetectFn:

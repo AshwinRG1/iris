@@ -14,7 +14,7 @@ from auth import require_key_header
 from deps import Deps, Runtime, get_deps, get_runtime
 from describe import start_description
 from detector import Detector
-from domain import Detection, Side
+from domain import SPOKEN_MS, Detection, Side
 from form_part import MalformedForm, read_part
 from store import Event, Snapshot, event_json
 
@@ -42,7 +42,6 @@ class FrameReply(BaseModel):
 
 
 MAX_SIDE_PX = 4096
-SPOKEN_MS = 10_000  # how long an event's description rides on /frame replies
 
 
 def _spoken(event: Event | None, now_ms: int) -> tuple[str | None, int | None]:

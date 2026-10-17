@@ -4,7 +4,7 @@ The pure helpers build the request and parse the reply, so tests need no network
 """
 
 import base64
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 import httpx
 
@@ -14,6 +14,11 @@ _URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generate
 
 class Describer(Protocol):
     async def describe(self, jpeg: bytes, boxes: str) -> str: ...
+
+
+@runtime_checkable
+class Closable(Protocol):
+    async def aclose(self) -> None: ...
 
 
 def build_request(
@@ -46,16 +51,22 @@ def parse_text(payload: dict[str, Any]) -> str:
     """The answer text: thought parts skipped, whitespace collapsed, capped. "" if none."""
     candidates = payload.get("candidates") or []
     parts = (candidates[0].get("content") or {}).get("parts") or [] if candidates else []
-    text = " ".join(p.get("text", "") for p in parts if not p.get("thought"))
-    return " ".join(text.split())[:MAX_TEXT_CHARS]
+    text = " ".join((p.get("text") or "") for p in parts if not p.get("thought"))
+    text = " ".join(text.split())
+    if len(text) > MAX_TEXT_CHARS:
+        cut = text[:MAX_TEXT_CHARS]
+        text = cut[: cut.rfind(" ")] if " " in cut else cut  # end on a whole word
+    return text
 
 
 class GeminiDescriber:
-    def __init__(self, api_key: str, model: str, system_instruction: str) -> None:
+    def __init__(self, api_key: str, model: str, system_instruction: str, timeout_s: float) -> None:
         self._api_key = api_key
         self._model = model
         self._system_instruction = system_instruction
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(10.0))
+        self._client = httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout_s + 1)
+        )  # the caller's own timeout fires first
 
     async def describe(self, jpeg: bytes, boxes: str) -> str:
         url, headers, body = build_request(

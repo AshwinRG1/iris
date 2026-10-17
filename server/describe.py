@@ -5,6 +5,7 @@ import io
 import logging
 from dataclasses import replace
 
+import httpx
 from PIL import Image, ImageDraw
 
 from deps import Deps, Runtime
@@ -63,17 +64,28 @@ async def _describe(
 ) -> None:
     s = deps.settings
     try:
-        image = annotate(jpeg, kept)
         async with asyncio.timeout(s.gemini_timeout_s):
+            # Pure image work shares the single slot, at most once per describe cooldown.
+            image = await asyncio.get_running_loop().run_in_executor(
+                runtime.slot, annotate, jpeg, kept
+            )
             text = await describer.describe(image, boxes_line(kept))
+    except httpx.HTTPStatusError as e:  # the status only: the body and URL stay out of the log
+        log.warning("description failed: %s %d", type(e).__name__, e.response.status_code)
+        return
     except Exception as e:  # never the message: it could carry request details
         log.warning("description failed: %s", type(e).__name__)
         return
-    if not text.strip():
+    text = text.strip()
+    if not text:
         log.warning("description empty; leaving it null")
         return
     if deps.clock.now_ms() - event.t_ms > s.describe_max_age_s * 1000:
         log.warning("description stale; discarded")
+        return
+    latest = runtime.events.latest()
+    if latest is None or latest.id != event.id:
+        log.warning("description dropped; a newer alert fired")
         return
     described = runtime.events.describe(event.id, text)
     if described is None:

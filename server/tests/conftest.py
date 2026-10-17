@@ -54,34 +54,44 @@ class FakeDetector:
 
 
 class FakeDescriber:
-    """Records each call. Scripted: answer `text`, sleep `delay_s`, push `clock` forward by
-    `advance_ms` (a late answer), then raise `error` if set. The default answer is empty."""
+    """Records each call. Scripted: wait on `gate` if gated (the test releases it), push
+    `clock` forward by `advance_ms` (a late answer), then raise `error` or answer `text`.
+    The default answer is empty."""
 
     def __init__(
         self,
         text: str = "",
         *,
         error: Exception | None = None,
-        delay_s: float = 0.0,
+        gated: bool = False,
         clock: "SettableClock | None" = None,
         advance_ms: int = 0,
     ) -> None:
         self.text = text
         self.error = error
-        self.delay_s = delay_s
+        self.gate = asyncio.Event() if gated else None
         self.clock = clock
         self.advance_ms = advance_ms
         self.calls: list[tuple[bytes, str]] = []
+        self.cancelled = False
+        self.closed = False
 
     async def describe(self, jpeg: bytes, boxes: str) -> str:
         self.calls.append((jpeg, boxes))
-        if self.delay_s:
-            await asyncio.sleep(self.delay_s)
+        if self.gate is not None:
+            try:
+                await self.gate.wait()
+            except asyncio.CancelledError:
+                self.cancelled = True
+                raise
         if self.clock is not None:
             self.clock.t += self.advance_ms
         if self.error is not None:
             raise self.error
         return self.text
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 class FakeClock:

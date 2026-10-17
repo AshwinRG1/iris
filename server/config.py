@@ -5,7 +5,7 @@ from typing import Literal, Self
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from domain import Tuning
+from domain import SPOKEN_MS, Tuning
 
 
 class Settings(BaseSettings):
@@ -37,7 +37,8 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.8-flash"
     gemini_timeout_s: float = Field(default=6.0, gt=0, allow_inf_nan=False)
     describe_cooldown_s: float = Field(default=15.0, ge=0, allow_inf_nan=False)
-    describe_max_age_s: float = Field(default=5.0, gt=0, allow_inf_nan=False)
+    # A description older than the /frame window could never be spoken, so cap it there.
+    describe_max_age_s: float = Field(default=5.0, gt=0, le=SPOKEN_MS / 1000, allow_inf_nan=False)
     gemini_prompt_file: str = ""  # empty: prompts/describe.txt beside the code
 
     @field_validator("alert_labels")
