@@ -53,11 +53,32 @@
 		<string>_bonjour._tcp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>This app needs camera access to stream from your phone's camera as a mock device feed.</string>
+	<string>This app needs camera access to stream from your phone&apos;s camera as a mock device feed.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>This lets your phone find and connect to your glasses over Wi-Fi.</string>
+	<string>Connects to your glasses and sends camera frames to the Iris server on your local network.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+#if IRIS_DEBUG_HTTP
+		<!-- The development server address is entered in Iris settings. -->
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>0.0.0.0/0</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+			<key>::/0</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
+#endif
+	</dict>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>This app needs microphone access to record sound from your glasses' microphone alongside video.</string>
+	<string>This app needs microphone access to record sound from your glasses&apos; microphone alongside video.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>This app needs access to save photos captured from your glasses.</string>
 	<key>UIApplicationSceneManifest</key>
