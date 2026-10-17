@@ -1,15 +1,15 @@
 import json
 import threading
-from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
-import pytest
 from conftest import (
+    CONTRACT,
+    BrokenLoad,
     FakeClock,
     FakeDescriber,
     FakeDetector,
     FakeWallClock,
+    SlowLoad,
     det,
     jpeg_bytes,
     wait_for,
@@ -18,11 +18,8 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from config import Settings
-from detector import Loaded
 from domain import Detection
 from main import create_app
-
-CONTRACT = Path(__file__).resolve().parents[2] / "docs" / "contract"
 
 
 def _client(detector: FakeDetector) -> TestClient:
@@ -126,23 +123,6 @@ def test_detector_receives_the_decoded_image() -> None:
     assert seen == [(80, 60)]
 
 
-class SlowLoad(FakeDetector):
-    def __init__(self) -> None:
-        super().__init__()
-        self.release = threading.Event()
-
-    def load(self) -> Loaded:
-        self.release.wait(5)
-        return super().load()
-
-
-@pytest.fixture
-def slow() -> Iterator[SlowLoad]:
-    d = SlowLoad()
-    yield d
-    d.release.set()
-
-
 def test_not_ready_gives_503_then_ready(slow: SlowLoad) -> None:
     with _client(slow) as c:
         assert c.get("/health").json()["ready"] is False
@@ -156,11 +136,6 @@ def test_not_ready_gives_503_then_ready(slow: SlowLoad) -> None:
         assert health["detector"] == "fake"
         assert health["device"] == "cpu"
         assert _post(c)["detections"] == []
-
-
-class BrokenLoad(FakeDetector):
-    def load(self) -> Loaded:
-        raise RuntimeError("weights missing")
 
 
 def test_load_failure_is_visible_and_frame_stays_503() -> None:

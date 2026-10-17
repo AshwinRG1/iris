@@ -15,6 +15,7 @@ from domain import Detection, Side
 log = logging.getLogger("iris")
 
 _FPS_WINDOW_MS = 10_000
+_PERCENTILE_WINDOW_MS = 60_000
 _KEEP = 100
 _LOG_RETRY_S = 30.0
 EVENTS_KEPT = 200
@@ -30,7 +31,12 @@ def nearest_rank[T: float](values: list[T], q: float) -> T | None:
 
 @dataclass
 class LatencyStats:
-    """The last 100 frames: when each arrived (ms, monotonic) and its server ms."""
+    """The last 100 frames: when each arrived (ms, monotonic) and its server ms.
+
+    fps and the percentiles also look only at a window ending now, so the percentiles cover
+    the last 100 frames that arrived within 60 s: at 2.5 fps the cap is the tighter limit
+    after about 40 s, and an idle server's percentiles return to None.
+    """
 
     _frames: deque[tuple[int, int]] = field(default_factory=lambda: deque(maxlen=_KEEP))
 
@@ -44,8 +50,10 @@ class LatencyStats:
             return 0.0
         return round((len(arrivals) - 1) / ((now_ms - min(arrivals)) / 1000), 2)
 
-    def server_ms_percentile(self, q: float) -> int | None:
-        return nearest_rank([ms for _, ms in self._frames], q)
+    def server_ms_percentile(self, q: float, now_ms: int) -> int | None:
+        """Over frames that arrived in the 60 s ending now; None when there are none."""
+        recent = [ms for t, ms in self._frames if now_ms - _PERCENTILE_WINDOW_MS <= t <= now_ms]
+        return nearest_rank(recent, q)
 
 
 class JsonlLog:
@@ -93,7 +101,7 @@ class Snapshot:
     """The last frame as the live view shows it. Replaced whole, never edited."""
 
     frame_id: int
-    t_ms: int
+    published_ms: int  # when the result was published, not when the frame arrived
     at: datetime
     jpeg: bytes
     detections: tuple[Detection, ...]
