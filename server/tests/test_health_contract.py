@@ -132,7 +132,7 @@ def test_health_types_when_load_failed_and_nothing_leaks() -> None:
 
 @pytest.mark.parametrize("fallback", ["no_alert_label", "load_failed: FileNotFoundError"])
 def test_health_types_in_fallback(fallback: str) -> None:
-    info = ModelInfo("iris-v1.onnx", "0" * 64, ("person", "limb"), fallback)
+    info = ModelInfo("iris-v1.onnx", "0" * 64, ("person",), fallback)
     with _app_client(_Detector(info)) as c:
         wait_for(lambda: _health(c)["ready"])
         body = _health(c)
