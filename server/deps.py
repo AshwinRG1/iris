@@ -9,6 +9,7 @@ from fastapi import Request
 
 from config import Settings
 from detector import Detector
+from domain import PolicyState
 
 
 # Placeholder: moves to the describer module in a later ticket.
@@ -39,6 +40,7 @@ class Runtime:
     ready: bool = False
     load_error: str | None = None
     last_frame_id: int = 0
+    policy: PolicyState = field(default_factory=PolicyState)
     # The single inference slot: one worker thread, so the model is never used concurrently.
     slot: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor(max_workers=1))
 

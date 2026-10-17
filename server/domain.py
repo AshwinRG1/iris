@@ -34,3 +34,22 @@ class Detection:
     @property
     def side(self) -> Side:
         return self.box.side
+
+
+@dataclass(frozen=True)
+class Tuning:
+    """Alert policy tuning. Times are integer ms; the environment speaks seconds."""
+
+    conf_alert: float = 0.35
+    window: int = 3
+    needed: int = 2
+    cooldown_ms: int = 4000
+    same_side_repeat_ms: int = 10000
+    window_max_age_ms: int = 2000
+
+
+@dataclass(frozen=True)
+class PolicyState:
+    recent: tuple[tuple[int, bool], ...] = ()  # (t_ms, hit) pairs
+    last_alert_ms: int | None = None
+    last_alert_side: Side | None = None

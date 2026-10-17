@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from PIL import Image
 from pydantic import BaseModel
 
+from alerts import decide
 from deps import Deps, Runtime, get_deps, get_runtime
 from detector import Detector
 from domain import Detection, Side
@@ -48,10 +49,13 @@ async def frame(
     )
     labels = deps.settings.alert_label_set
     kept = [d for d in found if d.label in labels and d.conf >= deps.settings.conf_detect]
+    tuning = deps.settings.tuning
+    hits = [d for d in kept if d.conf >= tuning.conf_alert]
+    runtime.policy, alert = decide(runtime.policy, hits, started, tuning)
     runtime.last_frame_id += 1
     return FrameReply(
         detections=[DetectionOut(label=d.label, conf=d.conf, side=d.side) for d in kept],
-        alert=None,
+        alert=alert,
         frame_id=runtime.last_frame_id,
         server_ms=deps.clock.now_ms() - started,
     )
