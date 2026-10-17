@@ -13,6 +13,7 @@ from alerts import decide
 from auth import require_key_header
 from deps import Deps, Runtime, get_deps, get_runtime
 from describe import start_description
+from describe_policy import note_frame
 from detector import Detector
 from domain import SPOKEN_MS, Detection, Side
 from form_part import MalformedForm, read_part
@@ -117,6 +118,9 @@ async def frame(
         raise HTTPException(status_code=400, detail=str(e)) from e
     labels = deps.settings.alert_label_set
     kept = [d for d in found if d.label.lower() in labels and d.conf >= deps.settings.conf_detect]
+    runtime.describe_state = note_frame(
+        runtime.describe_state, kept, started, deps.settings.describe_tuning.empty_reset_ms
+    )
     runtime.policy, alert = decide(runtime.policy, kept, started, runtime.tuning)
     runtime.last_frame_id += 1
     # An alert makes a new latest event, which has no description yet.

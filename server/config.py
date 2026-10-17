@@ -5,6 +5,7 @@ from typing import Literal, Self
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from describe_policy import DescribeTuning
 from domain import SPOKEN_MS, Tuning
 
 
@@ -39,6 +40,13 @@ class Settings(BaseSettings):
     describe_cooldown_s: float = Field(default=15.0, ge=0, allow_inf_nan=False)
     # A description older than the /frame window could never be spoken, so cap it there.
     describe_max_age_s: float = Field(default=5.0, gt=0, le=SPOKEN_MS / 1000, allow_inf_nan=False)
+    # A scene counts as changed (and may be described again) when people are gone this long,
+    # move more than this share of the frame width, or resize more than this share of their
+    # area, or when this long has passed since the last description.
+    describe_empty_reset_s: float = Field(default=3.0, gt=0, allow_inf_nan=False)
+    describe_move_frac: float = Field(default=0.25, gt=0, le=1)
+    describe_area_frac: float = Field(default=0.5, gt=0, allow_inf_nan=False)
+    describe_scene_reset_s: float = Field(default=60.0, gt=0, allow_inf_nan=False)
     gemini_prompt_file: str = ""  # empty: prompts/describe.txt beside the code
 
     @field_validator("alert_labels")
@@ -65,6 +73,16 @@ class Settings(BaseSettings):
             cooldown_ms=round(self.cooldown_s * 1000),
             same_side_repeat_ms=round(self.same_side_repeat_s * 1000),
             window_max_age_ms=round(self.window_max_age_s * 1000),
+        )
+
+    @property
+    def describe_tuning(self) -> DescribeTuning:
+        return DescribeTuning(
+            cooldown_ms=round(self.describe_cooldown_s * 1000),
+            empty_reset_ms=round(self.describe_empty_reset_s * 1000),
+            move_frac=self.describe_move_frac,
+            area_frac=self.describe_area_frac,
+            scene_reset_ms=round(self.describe_scene_reset_s * 1000),
         )
 
     @property

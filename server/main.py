@@ -140,11 +140,16 @@ def build_describer(s: Settings) -> Describer | None:
         log.warning("Gemini client could not be built (%s); descriptions are off", type(e).__name__)
         return None
     log.info(
-        "descriptions on: model %s, timeout %.1f s, cooldown %.0f s, max age %.1f s",
+        "descriptions on: model %s, timeout %g s, cooldown %g s, max age %g s, "
+        "empty reset %g s, move %g, area %g, scene reset %g s",
         s.gemini_model.strip(),
         s.gemini_timeout_s,
         s.describe_cooldown_s,
         s.describe_max_age_s,
+        s.describe_empty_reset_s,
+        s.describe_move_frac,
+        s.describe_area_frac,
+        s.describe_scene_reset_s,
     )
     return describer
 

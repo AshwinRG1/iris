@@ -9,7 +9,7 @@ import httpx
 from PIL import Image, ImageDraw
 
 from deps import Deps, Runtime
-from describe_policy import boxes_line, may_describe, scene_of
+from describe_policy import attached, boxes_line, may_describe, scene_of
 from domain import Detection
 from gemini import Describer
 from store import Event, event_json
@@ -41,11 +41,10 @@ def start_description(
     describer = deps.describer
     if describer is None:
         return
-    s = deps.settings
     scene = scene_of(kept)
     in_flight = bool(runtime.describe_tasks)
     if not may_describe(
-        runtime.describe_state, scene, event.t_ms, round(s.describe_cooldown_s * 1000), in_flight
+        runtime.describe_state, scene, event.t_ms, deps.settings.describe_tuning, in_flight
     ):
         return
     runtime.describe_state = replace(runtime.describe_state, last_started_ms=event.t_ms)
@@ -91,5 +90,5 @@ async def _describe(
     if described is None:
         log.warning("description dropped; event %d left the ring", event.id)
         return
-    runtime.describe_state = replace(runtime.describe_state, last_scene=scene_of(kept))
+    runtime.describe_state = attached(runtime.describe_state, scene_of(kept), event.t_ms)
     runtime.event_log.append(event_json(described))

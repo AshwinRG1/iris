@@ -23,7 +23,7 @@ from pydantic import SecretStr
 
 from config import Settings
 from deps import Runtime
-from domain import Detection
+from domain import Box, Detection
 from main import create_app
 
 LEFT = det(conf=0.8, cx=0.1)
@@ -61,6 +61,11 @@ class Rig:
 
     def described(self, n: int) -> None:
         wait_for(lambda: sum(e["description"] is not None for e in self.events()) >= n)
+
+    def run(self, t0: int, t1: int, dets: list[Detection]) -> None:
+        """Frames every 400 ms from t0 to t1, as the glasses send them."""
+        for t in range(t0, t1 + 1, 400):
+            self.frame(t, dets)
 
     def idle(self) -> None:
         wait_for(lambda: not self.runtime.describe_tasks)
@@ -325,3 +330,119 @@ def test_no_describer_means_descriptions_are_off(make: Make) -> None:
     assert not rig.runtime.describe_tasks
     assert reply["description"] is None
     assert rig.events()[0]["description_id"] is None
+
+
+# Scene change rules (cooldown 15 s, empty reset 3 s, move 0.25, area 0.5, reset 60 s).
+A = det(conf=0.8, cx=0.06)  # left, centre x 0.06, area 0.06
+
+
+def _described_at_400(make: Make) -> tuple[Rig, FakeDescriber]:
+    d = FakeDescriber("said")
+    rig = make(d)
+    rig.alert_at(400, [A])
+    rig.described(1)
+    rig.idle()
+    return rig, d
+
+
+def test_count_or_sides_change_after_the_cooldown_makes_a_call(make: Make) -> None:
+    rig, d = _described_at_400(make)
+    rig.alert_at(16_000, [A, RIGHT])
+    wait_for(lambda: len(d.calls) == 2)
+
+
+def test_empty_then_refill_makes_a_call_after_the_cooldown(make: Make) -> None:
+    rig, d = _described_at_400(make)
+    rig.run(800, 4400, [])  # empty for 3.6 s
+    rig.alert_at(16_000, [A])
+    wait_for(lambda: len(d.calls) == 2)
+
+
+def test_a_short_gap_does_not_forget_the_scene(make: Make) -> None:
+    rig, d = _described_at_400(make)
+    rig.run(800, 3200, [])  # empty for 2.4 s
+    rig.alert_at(16_000, [A])
+    assert not rig.runtime.describe_tasks and len(d.calls) == 1
+
+
+def test_a_big_shift_of_the_centre_makes_a_call(make: Make) -> None:
+    rig, d = _described_at_400(make)
+    rig.alert_at(16_000, [det(conf=0.8, cx=0.32)])  # same side, 0.26 further right
+    wait_for(lambda: len(d.calls) == 2)
+
+
+def test_a_big_change_of_area_makes_a_call(make: Make) -> None:
+    rig, d = _described_at_400(make)
+    close = Detection("person", 0.8, Box(0.0, 0.1, 0.2, 0.9))  # area 0.16 against 0.06
+    rig.alert_at(16_000, [close])
+    wait_for(lambda: len(d.calls) == 2)
+
+
+def test_small_moves_and_resizes_make_no_call(make: Make) -> None:
+    rig, d = _described_at_400(make)
+    rig.alert_at(16_000, [det(conf=0.8, cx=0.2)])  # shifts 0.14
+    assert not rig.runtime.describe_tasks
+    slightly_taller = Detection("person", 0.8, Box(0.01, 0.2, 0.11, 0.9))  # area 0.07
+    rig.alert_at(30_000, [slightly_taller])
+    assert not rig.runtime.describe_tasks and len(d.calls) == 1
+
+
+def test_sixty_seconds_after_the_description_the_same_scene_is_described_again(
+    make: Make,
+) -> None:
+    rig, d = _described_at_400(make)
+    rig.alert_at(60_400, [A])
+    wait_for(lambda: len(d.calls) == 2)
+
+
+def test_a_person_standing_still_is_described_once_per_minute(make: Make) -> None:
+    d = FakeDescriber("said")
+    rig = make(d)
+    rig.run(0, 400, [A])
+    rig.described(1)
+    rig.idle()
+    rig.run(800, 59_600, [A])  # alerts at 10.4 s, 20.4 s ... 50.4 s
+    assert len(d.calls) == 1
+    rig.run(60_000, 60_400, [A])  # the next alert is at 60.4 s
+    wait_for(lambda: len(d.calls) == 2)
+
+
+def test_a_swap_to_a_new_person_without_a_gap_waits_for_the_cooldown(make: Make) -> None:
+    d = FakeDescriber("said")
+    rig = make(d)
+    rig.run(0, 400, [A])
+    rig.described(1)
+    rig.idle()
+    other = det(conf=0.8, cx=0.32)  # same side, clearly elsewhere
+    rig.run(800, 10_000, [A])
+    rig.run(10_400, 10_400, [other])  # alerts here, 10 s after the last, inside the cooldown
+    assert len(d.calls) == 1 and not rig.runtime.describe_tasks
+    rig.run(10_800, 20_400, [other])  # alerts again at 20.4 s
+    wait_for(lambda: len(d.calls) == 2)
+    assert d.calls[1][1] == "Boxes: left 0.80"
+
+
+def test_triggers_inside_the_cooldown_make_no_call(make: Make) -> None:
+    rig, d = _described_at_400(make)
+    rig.alert_at(5400, [A, det(conf=0.9, cx=0.9)])  # count and sides changed
+    assert not rig.runtime.describe_tasks
+    rig.alert_at(10_400, [det(conf=0.8, cx=0.32)])  # left again, moved
+    assert not rig.runtime.describe_tasks and len(d.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"describe_empty_reset_s": 0},
+        {"describe_empty_reset_s": float("inf")},
+        {"describe_move_frac": 0},
+        {"describe_move_frac": 1.5},
+        {"describe_area_frac": 0},
+        {"describe_area_frac": float("nan")},
+        {"describe_scene_reset_s": 0},
+        {"describe_scene_reset_s": float("inf")},
+    ],
+)
+def test_bad_scene_settings_fail_startup(bad: dict[str, float]) -> None:
+    with pytest.raises(ValueError):
+        Settings(**bad)  # type: ignore[arg-type]

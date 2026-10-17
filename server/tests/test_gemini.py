@@ -96,7 +96,8 @@ def test_build_describer_logs_one_info_line_when_on(
     assert d is not None
     asyncio.run(d.aclose())  # type: ignore[attr-defined]
     lines = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
-    assert len(lines) == 1 and "gemini-3.8-flash" in lines[0] and "2" in lines[0]
+    assert len(lines) == 1 and "gemini-3.8-flash" in lines[0]
+    assert all(w in lines[0] for w in ("empty reset 3", "move 0.25", "area 0.5", "scene reset 60"))
     assert SECRET not in caplog.text
 
 
