@@ -31,6 +31,7 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -44,6 +45,7 @@ GRACE_S = 1.0  # an alert may trail the end of a sighting by this long
 EPS = 1e-6  # float slack when comparing clip times
 KEY_ENV = "IRIS_API_KEY"
 KEY_HEADER = "X-Iris-Key"
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 @dataclass(frozen=True)
@@ -88,9 +90,20 @@ def check_sightings(alert_times: list[float], sightings: list[Sighting]) -> list
 
 
 def auth_headers(env: Mapping[str, str]) -> dict[str, str]:
-    """Headers for POST /frame: the key from IRIS_API_KEY, or none when unset or empty."""
-    key = env.get(KEY_ENV, "")
+    """Headers for POST /frame: the stripped key from IRIS_API_KEY, or none when blank.
+
+    Raises ValueError (message never contains the key) for non-ASCII or control characters.
+    """
+    key = env.get(KEY_ENV, "").strip()
+    if not key.isascii() or not key.isprintable():
+        raise ValueError(f"{KEY_ENV} has invalid characters")
     return {KEY_HEADER: key} if key else {}
+
+
+def is_cleartext_remote(url: str, headers: Mapping[str, str]) -> bool:
+    """True when a key would travel over plain http to a non-local host."""
+    parsed = urlparse(url)
+    return bool(headers) and parsed.scheme != "https" and parsed.hostname not in LOCAL_HOSTS
 
 
 def check_health(health: dict[str, Any], commit_prefix: str | None) -> list[str]:
@@ -141,13 +154,13 @@ def _fmt(v: float | None) -> str:
     return "n/a" if v is None else f"{v:.0f}"
 
 
-def replay(client: httpx.Client, clip: Path, headers: Mapping[str, str]) -> list[Alert]:
+def replay(client: httpx.Client, clip: Path, headers: Mapping[str, str]) -> tuple[list[Alert], int]:
+    """Play the clip. Returns the alerts and how many /frame replies were 401."""
     alerts: list[Alert] = []
     server_ms: list[float] = []
     rtt_ms: list[float] = []
     sent_at: list[float] = []
-    errors = skipped = 0
-    warned_auth = False
+    errors = skipped = auth_errors = 0
     slot_s = 1 / SAMPLE_FPS
     start = time.perf_counter()
     for clip_s, jpeg in sample_frames(clip):
@@ -165,20 +178,28 @@ def replay(client: httpx.Client, clip: Path, headers: Mapping[str, str]) -> list
                 "/frame", files={"file": ("frame.jpg", jpeg, "image/jpeg")}, headers=headers
             )
             r.raise_for_status()
+            rtt_ms.append((time.perf_counter() - sent) * 1000)  # 2xx only
             body = r.json()
             server_ms.append(body["server_ms"])
             alert = body["alert"]
-        except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
+        except httpx.HTTPStatusError as e:
+            # Fixed text only: an error's own message could carry request details.
             errors += 1
-            if isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 401:
-                if not warned_auth:
-                    warned_auth = True
+            if e.response.status_code == 401:
+                auth_errors += 1
+                if auth_errors == 1:
                     print(f"401 from /frame: {KEY_ENV} is missing or wrong (server wants a key)")
             else:
-                print(f"t={clip_s:6.2f}s  ERROR  {type(e).__name__}: {e}")
+                print(f"t={clip_s:6.2f}s  ERROR  HTTP {e.response.status_code} from /frame")
             continue
-        finally:
-            rtt_ms.append((time.perf_counter() - sent) * 1000)
+        except httpx.LocalProtocolError:
+            errors += 1
+            print(f"t={clip_s:6.2f}s  ERROR  refused to send the request (bad header value?)")
+            continue
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
+            errors += 1
+            print(f"t={clip_s:6.2f}s  ERROR  {type(e).__name__}: {e}")
+            continue
         if alert:
             alerts.append(Alert(clip_s, alert))
             print(f"t={clip_s:6.2f}s  ALERT  {alert}")
@@ -186,11 +207,12 @@ def replay(client: httpx.Client, clip: Path, headers: Mapping[str, str]) -> list
     s50, s95 = nearest_rank(server_ms, 0.5), nearest_rank(server_ms, 0.95)
     r50, r95 = nearest_rank(rtt_ms, 0.5), nearest_rank(rtt_ms, 0.95)
     print(
-        f"frames={len(sent_at)} errors={errors} skipped={skipped}  fps={fps:.2f}  "
+        f"frames={len(sent_at)} errors={errors} auth_errors={auth_errors} skipped={skipped}  "
+        f"fps={fps:.2f}  "
         f"server_ms p50={_fmt(s50)} p95={_fmt(s95)}  "
         f"round_trip_ms p50={_fmt(r50)} p95={_fmt(r95)}"
     )
-    return alerts
+    return alerts, auth_errors
 
 
 def preflight_health(client: httpx.Client, commit_prefix: str | None) -> bool:
@@ -227,13 +249,26 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("--commit only applies with --preflight")
 
     sightings = parse_sightings(args.expect.read_text()) if args.expect else None
+    try:
+        headers = auth_headers(os.environ)
+    except ValueError as e:
+        print(e)
+        return 2
+    if is_cleartext_remote(args.url, headers):
+        print(
+            f"warning: {KEY_ENV} is set but {args.url} is plain http; the key travels in cleartext"
+        )
     with httpx.Client(base_url=args.url, timeout=30) as client:
         if args.preflight and not preflight_health(client, args.commit):
             return 1
-        alerts = replay(client, args.clip, auth_headers(os.environ))
-    if sightings is None:
+        alerts, auth_errors = replay(client, args.clip, headers)
+    problems = []
+    if auth_errors:
+        problems.append(f"{auth_errors} frame(s) got 401: {KEY_ENV} is missing or wrong")
+    if sightings is not None:
+        problems += check_sightings([a.clip_s for a in alerts], sightings)
+    elif not problems:
         return 0
-    problems = check_sightings([a.clip_s for a in alerts], sightings)
     print("FAIL" if problems else "PASS")
     for p in problems:
         print(f"  {p}")
