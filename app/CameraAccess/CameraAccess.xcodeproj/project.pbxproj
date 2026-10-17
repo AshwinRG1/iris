@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1A150000000000000000000D /* DetectionHold.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A150000000000000000000E /* DetectionHold.swift */; };
 		1A1500000000000000000009 /* MockVideoPreparer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A150000000000000000000A /* MockVideoPreparer.swift */; };
 		1A150000000000000000000B /* iris_nobframes_720p.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 1A150000000000000000000C /* iris_nobframes_720p.mp4 */; };
 		1A1500000000000000000001 /* FrameUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1500000000000000000002 /* FrameUploader.swift */; };
@@ -77,6 +78,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		1A150000000000000000000E /* DetectionHold.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectionHold.swift; sourceTree = "<group>"; };
 		1A150000000000000000000A /* MockVideoPreparer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockVideoPreparer.swift; sourceTree = "<group>"; };
 		1A150000000000000000000C /* iris_nobframes_720p.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = iris_nobframes_720p.mp4; sourceTree = "<group>"; };
 		1A1500000000000000000002 /* FrameUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameUploader.swift; sourceTree = "<group>"; };
@@ -237,6 +239,7 @@
 		D7A0000000000000000000F0 /* Media */ = {
 			isa = PBXGroup;
 			children = (
+				1A150000000000000000000E /* DetectionHold.swift */,
 				1A150000000000000000000A /* MockVideoPreparer.swift */,
 				1A1500000000000000000002 /* FrameUploader.swift */,
 				D7A0000000000000000000AB /* AudioCaptureHandler.swift */,
@@ -417,6 +420,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1A150000000000000000000D /* DetectionHold.swift in Sources */,
 				1A1500000000000000000009 /* MockVideoPreparer.swift in Sources */,
 				1A1500000000000000000001 /* FrameUploader.swift in Sources */,
 				1A1500000000000000000003 /* DetectionOverlayView.swift in Sources */,

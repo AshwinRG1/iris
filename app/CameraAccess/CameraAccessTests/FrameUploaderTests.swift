@@ -250,6 +250,91 @@ struct FrameUploaderTests {
     #expect(UploadProtocol.requests.allSatisfy { $0.value(forHTTPHeaderField: "X-Iris-Key") == "test-key" })
   }
 
+  @Test func quietRepliesHoldCardsWhileRawDetectionsAndSpeechStayCurrent() async throws {
+    let harness = Harness(replies: [
+      .response(200, try fixture("frame-alert")),
+      .response(200, try fixture("frame-quiet")),
+    ])
+    let uploader = harness.uploader
+    uploader.isEnabled = true
+    uploader.setStreaming(true)
+    let image = testImage()
+    uploader.submit(image)
+    try await waitUntil { !uploader.isUploading }
+    let raw = uploader.detections
+    let alertTime = uploader.lastAlertAt
+    #expect(!uploader.held.sides.isEmpty)
+
+    harness.clock.time += 1
+    uploader.submit(image)
+    try await waitUntil { !uploader.isUploading }
+    #expect(uploader.detections.isEmpty)
+    #expect(uploader.lastResponseAt != nil)
+    #expect(uploader.lastError == nil)
+    for detection in raw {
+      let state = try #require(uploader.held.sides[detection.side])
+      #expect(state.detections.contains(detection))
+      #expect(state.missCount == 1)
+      #expect(state.isDimmed)
+    }
+    #expect(uploader.lastAlertAt == alertTime)
+    #expect(harness.speaker.spoken == ["possible person, left"])
+  }
+
+  @Test func failedRequestsLeaveHeldCardsAndMissCountsUnchanged() async throws {
+    let harness = Harness(replies: [
+      .response(200, try fixture("frame-alert")),
+      .failure(URLError(.timedOut)),
+      .response(503, Data()),
+      .response(200, Data("invalid JSON".utf8)),
+    ])
+    let uploader = harness.uploader
+    uploader.isEnabled = true
+    uploader.setStreaming(true)
+    let image = testImage()
+    uploader.submit(image)
+    try await waitUntil { !uploader.isUploading }
+    let held = uploader.held
+    let receivedAt = try #require(uploader.lastResponseAt)
+    #expect(!held.sides.isEmpty)
+
+    for _ in 0..<3 {
+      harness.clock.time += 1
+      uploader.submit(image)
+      try await waitUntil { !uploader.isUploading }
+      #expect(uploader.lastError != nil)
+      #expect(uploader.detections.isEmpty)
+      #expect(uploader.lastResponseAt == nil)
+      #expect(uploader.held == held)
+      uploader.expireHeldDetections(at: receivedAt.addingTimeInterval(0.5))
+      #expect(uploader.held == held, "An upload error must not gate held cards on raw lastResponseAt")
+    }
+    uploader.expireHeldDetections(at: receivedAt.addingTimeInterval(2.001))
+    #expect(uploader.held.sides.isEmpty)
+    #expect(harness.speaker.spoken == ["possible person, left"])
+  }
+
+  @Test(arguments: ["stream", "uploads", "url", "key"])
+  func streamAndSettingsChangesImmediatelyClearHeldCards(_ change: String) async throws {
+    let harness = Harness(replies: [.response(200, try fixture("frame-alert"))])
+    let uploader = harness.uploader
+    uploader.isEnabled = true
+    uploader.setStreaming(true)
+    uploader.submit(testImage())
+    try await waitUntil { !uploader.isUploading }
+    #expect(!uploader.held.sides.isEmpty)
+
+    switch change {
+    case "stream": uploader.setStreaming(false)
+    case "uploads": uploader.isEnabled = false
+    case "url": uploader.serverURL = "https://replacement.example.test"
+    default: uploader.serverKey = "replacement-key"
+    }
+    #expect(uploader.held == DetectionHold())
+    #expect(uploader.detections.isEmpty)
+    #expect(uploader.lastResponseAt == nil)
+  }
+
   @Test func streamStopsAndSettingsChangesCancelPendingFrames() async throws {
     let harness = Harness(replies: [.hold, .response(200, try fixture("frame-alert")), .hold])
     let uploader = harness.uploader

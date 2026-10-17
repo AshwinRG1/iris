@@ -5,13 +5,6 @@ import Observation
 import UIKit
 import os
 
-/// Keep labels and directions open-ended so new server classes do not break decoding.
-struct FrameDetection: Codable, Equatable, Sendable {
-  let label: String
-  let conf: Double
-  let side: String
-}
-
 struct FrameResponse: Decodable, Equatable, Sendable {
   let detections: [FrameDetection]
   let alert: String?
@@ -115,6 +108,7 @@ final class FrameUploader {
   private(set) var isStreaming = false
   private(set) var isUploading = false
   private(set) var detections: [FrameDetection] = []
+  private(set) var held = DetectionHold()
   private(set) var sceneDescription: String?
   private(set) var lastResponseAt: Date?
   private(set) var lastAlert: String?
@@ -268,9 +262,11 @@ final class FrameUploader {
         }
 
         let reply = try JSONDecoder().decode(FrameResponse.self, from: data)
+        let receivedAt = Date()
         detections = reply.detections
+        held.apply(reply.detections, at: receivedAt)
         sceneDescription = reply.description
-        lastResponseAt = Date()
+        lastResponseAt = receivedAt
         lastRoundTripMS = roundTripMS
         lastServerMS = reply.serverMS
         lastFrameID = reply.frameID
@@ -345,11 +341,16 @@ final class FrameUploader {
     return (0..<2).contains(date.timeIntervalSince(receivedAt))
   }
 
+  func expireHeldDetections(at date: Date) {
+    held.expire(at: date)
+  }
+
   private func invalidateCurrentFrame() {
     generation += 1
     uploadTask?.cancel()
     lastAttempt = nil
     detections = []
+    held = DetectionHold()
     sceneDescription = nil
     lastResponseAt = nil
     lastRoundTripMS = nil
@@ -360,7 +361,7 @@ final class FrameUploader {
   }
 
   private func recordFailure(_ message: String) {
-    // A failed/quiet frame has no current detections. Keep the last alert as history.
+    // Report the failure truthfully, but leave display history and alert history alone.
     detections = []
     sceneDescription = nil
     lastResponseAt = nil
