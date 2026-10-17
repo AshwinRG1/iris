@@ -50,6 +50,8 @@ jobs:
       - name: shellcheck deploy scripts
         run: |
           shopt -s nullglob
-          files=(deploy/*.sh)
+          files=(deploy/*.sh deploy/tests/*.sh)
           [ "${#files[@]}" -gt 0 ] || { echo "no deploy scripts found" >&2; exit 1; }
           shellcheck "${files[@]}"
+      - name: test deploy/update.sh
+        run: bash deploy/tests/test_update.sh
