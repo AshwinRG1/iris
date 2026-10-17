@@ -13,6 +13,7 @@ from config import Settings
 from deps import Clock, Deps, Describer, Runtime, WallClock, get_deps
 from detector import Detector, YoloDetector
 from frame_routes import router as frame_router
+from limits import BodyLimitMiddleware
 
 __all__ = ["Deps", "app", "create_app", "get_deps"]
 
@@ -54,6 +55,7 @@ def create_app(
     app = FastAPI(title="Iris server", lifespan=_lifespan)
     app.state.deps = Deps(detector, describer, clock, wall_clock, settings)
     app.state.runtime = Runtime(device=detector.device)
+    app.add_middleware(BodyLimitMiddleware, max_bytes=settings.max_upload_bytes)
     app.include_router(frame_router)
     return app
 

@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     model_path: str = "yolo26s.pt"
     imgsz: int = 640
     device: str = ""  # empty: CUDA, then MPS, then CPU
+    iris_api_key: str = ""  # empty: no key checks anywhere
+    max_upload_bytes: int = 2_000_000
 
     @property
     def alert_label_set(self) -> frozenset[str]:
