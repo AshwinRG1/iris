@@ -56,7 +56,9 @@ def create_app(
     app = FastAPI(title="Iris server", lifespan=_lifespan)
     app.state.deps = Deps(detector, describer, clock, wall_clock, settings)
     app.state.runtime = Runtime(
-        device=detector.device, frame_log=FrameLog(Path(settings.log_dir) / "frames.jsonl")
+        device=detector.device,
+        frame_log=FrameLog(Path(settings.log_dir) / "frames.jsonl"),
+        tuning=settings.tuning,
     )
     app.include_router(frame_router)
     return app

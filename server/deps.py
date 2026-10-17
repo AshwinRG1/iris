@@ -9,6 +9,7 @@ from fastapi import Request
 
 from config import Settings
 from detector import Detector
+from domain import PolicyState, Tuning
 from store import FrameLog, LatencyStats
 
 
@@ -38,9 +39,11 @@ class Deps:
 class Runtime:
     device: str
     frame_log: FrameLog
+    tuning: Tuning
     ready: bool = False
     load_error: str | None = None
     last_frame_id: int = 0
+    policy: PolicyState = field(default_factory=PolicyState)
     stats: LatencyStats = field(default_factory=LatencyStats)
     # The single inference slot: one worker thread, so the model is never used concurrently.
     slot: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor(max_workers=1))
