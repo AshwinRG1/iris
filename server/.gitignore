@@ -1,0 +1,17 @@
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.env
+.env.*
+!.env.example
+weights/
+*.pt
+*.onnx
+logs/
+*.jsonl
+*.log
+*.mp4
+*.mov
+*.h265
+*.hevc

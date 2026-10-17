@@ -95,14 +95,14 @@ Either side's PRs must be revertable without breaking the other side.
 | Method and path | Auth | Purpose |
 | --- | --- | --- |
 | `GET /health` | none | Readiness, active model, device, labels, image size, fps, server ms p50/p95, git commit, tuning |
-| `GET /` | none | Live view page |
-| `GET /latest.jpg` | none | The last frame received, as raw JPEG |
-| `GET /latest` | none | `frame_id`, detections with normalized boxes, and the time the frame arrived |
-| `GET /events?since=<id>` | none | Recent events: id, time, side, conf, description |
+| `GET /` | key, as `?key=` | Live view page |
+| `GET /latest.jpg` | key, as `?key=` | The last frame received, as raw JPEG |
+| `GET /latest` | key, as `?key=` | `frame_id`, detections with normalized boxes, and the time the frame arrived |
+| `GET /events?since=<id>` | key, as `?key=` | Recent events: id, `at` (wall-clock UTC, ISO 8601), side, conf, description |
 | `GET /tuning` | none | The current tuning values |
 | `PUT /tuning` | key | Changes tuning at runtime. Validated, kept in memory, reset to env defaults on restart. |
 
-The read endpoints are open, so anyone with the URL can see the camera feed. If that matters during judging, require the same key on them as a `?key=` query parameter.
+The live view endpoints (`/`, `/latest.jpg`, `/latest` and `/events`) show the camera feed, so when `IRIS_API_KEY` is set they require the same key as a `?key=` query parameter. Open the live view at `/?key=<key>`; the page passes the key along on its own polls. With the key unset, as in local dev, everything stays open. `/health` and `GET /tuning` stay open, since they don't show the feed and `update.sh` and the preflight check need `/health`. This changes nothing for A.
 
 ## 4. Glossary
 
@@ -124,6 +124,7 @@ These terms are candidates for `GLOSSARY.md`; `/grill-with-docs` should settle t
 - **Tuning**: the alert policy parameters that can change at runtime.
 - **Live view**: the browser page showing the latest frame, boxes and the event log.
 - **Replay harness**: a script that streams a video clip to the server the way the app does.
+- **Sighting**: a stretch of clip time when a person is visible, marked by hand (by D) for checking alerts. Not to be confused with the window; avoid "time window" for it.
 
 ## 5. Architecture
 
@@ -149,8 +150,8 @@ The team plan gives B `main.py`, `config.py` and `gemini.py`. This design propos
 | --- | --- | --- |
 | `server/domain.py` | Types: `Box`, `Detection`, `Side`, `Event`, `Tuning`, `PolicyState` | stdlib only |
 | `server/alerts.py` | Alert policy: `decide(state, detections, now, tuning) -> (state, alert or None)` | `domain` |
-| `server/detector.py` | `Detector` protocol, plus the YOLO adapter (device, warmup, normalized boxes) | `domain`, ultralytics |
-| `server/zeroshot.py` (D) | Zero-shot `Detector` that implements the same protocol | `domain`, transformers |
+| `server/detector.py` | `Detector` protocol, the YOLO adapter (device, warmup, normalized boxes), and the zero-shot adapter that wraps D's `zeroshot.detect` | `domain`, ultralytics |
+| `server/zeroshot.py` (D) | A plain function `detect(image) -> list[dict]`, each dict holding `label`, `conf` and a normalized `box`. It never imports B's code. | transformers |
 | `server/gemini.py` | `Describer` protocol, plus the Gemini adapter (prompt, timeout) | google-genai |
 | `server/store.py` | Latest frame snapshot, event ring buffer (200 events), rolling latency stats, JSONL logs | `domain` |
 | `server/pipeline.py` | Per frame: decode and detect in the worker slot, then policy, store and describe on the loop | everything above |
@@ -181,12 +182,12 @@ class Detection: label: str; conf: float; box: Box      # side is derived from b
 @dataclass(frozen=True)
 class Tuning:
     conf_alert: float = 0.35; window: int = 3; needed: int = 2
-    cooldown_s: float = 4.0; same_side_repeat_s: float = 10.0; window_max_age_s: float = 2.0
+    cooldown_ms: int = 4000; same_side_repeat_ms: int = 10000; window_max_age_ms: int = 2000
 
 @dataclass(frozen=True)
 class PolicyState:
-    recent: tuple[tuple[float, bool], ...] = ()          # (time, hit) pairs
-    last_alert_at: float | None = None
+    recent: tuple[tuple[int, bool], ...] = ()            # (t_ms, hit) pairs
+    last_alert_ms: int | None = None
     last_alert_side: Side | None = None
 
 class Detector(Protocol):
@@ -197,10 +198,17 @@ class Describer(Protocol):
     async def describe(self, jpeg: bytes) -> str: ...
 
 class Clock(Protocol):
-    def now(self) -> float: ...                           # monotonic seconds
+    def now_ms(self) -> int: ...                          # monotonic integer milliseconds
+
+class WallClock(Protocol):
+    def now(self) -> datetime: ...                        # UTC, for display and logs only
 ```
 
 `Tuning` validates `1 <= needed <= window` and `0 < conf_alert <= 1`, both at startup and on `PUT /tuning`. That makes an impossible policy unrepresentable.
+
+**Time is integer milliseconds inside the server.** With float seconds, the worked scenarios that land exactly on a limit go wrong: in Python, 0.4 added eleven times minus 0.4 is `3.9999999999999996`, so a 4 s cooldown would still be running at 4.4 s. Environment variables and `/tuning` stay in seconds and are converted to ms when they are parsed.
+
+**Two clocks.** The alert policy reads only the monotonic `Clock`. Every event and log line also records `at`, a wall-clock UTC timestamp from `WallClock`, so the live view and A's app logs can be lined up. `at` is never used in a decision.
 
 ## 6. Frame lifecycle
 
@@ -228,7 +236,7 @@ sequenceDiagram
 3. **Decode and detect** run in a worker thread through `anyio.to_thread.run_sync` with a `CapacityLimiter(1)`. The model is a real single-writer resource, so that's the one place work is serialized. Decoding uses `cv2.imdecode`; a failure, or a side over 4096 px, returns 400. The pipeline, not the adapter, then keeps only detections whose label is in `ALERT_LABELS` (just `person` for the stock COCO model) and whose conf is at least `CONF_DETECT`. That keeps the filter testable with a fake detector.
 4. **Side** comes from the box center x: left if below 1/3, right if above 2/3, otherwise ahead.
 5. **Alert policy** runs on the loop (section 7).
-6. **Store**: replace the latest-frame snapshot (raw JPEG bytes, detections, frame_id, time), update the latency stats, and append one line to `logs/frames.jsonl`. If an alert fired, append an event to the ring buffer and to `logs/events.jsonl`.
+6. **Store**: replace the latest-frame snapshot (raw JPEG bytes, detections, frame_id, `t_ms`, `at`), update the latency stats, and append one line to `logs/frames.jsonl`. If an alert fired, append an event to the ring buffer and to `logs/events.jsonl`.
 7. **Describe**: if an alert fired and no description is already running, start a background task. Hold a reference to the task in a set so it isn't garbage-collected. On success, write the description onto that event. The event loop is still the only writer.
 8. **Respond** with the latest event's description if the event is less than 10 s old.
 
@@ -266,14 +274,14 @@ These rules are exact; the tests in section 13 come from them.
 3. An alert fires only on a hit frame, and only when the window holds at least `needed` hits.
 4. It is suppressed if the time since the last alert is under `cooldown_s`.
 5. It is also suppressed if the time since the last alert is under `same_side_repeat_s` and the side is the same as last time.
-6. The side is the side of the highest-confidence hit in the current frame.
+6. The side is the side of the highest-confidence hit in the current frame. The window counts hit frames regardless of side, so a hit on the left followed by a hit on the right fires on the right (scenario 14).
 7. The text is `possible person, <side>` for every alert label.
 
 **Changes from the team plan**
 
 - **2 of the last 3 frames** instead of 2 in a row. At 2.5 fps, a single dropped detection, from a head turn or a raindrop, would otherwise reset the streak. The plan's rule is still available as `needed = window = 2`.
 - **Same-side repeat.** Without this, a person who stays in view gets announced every 4 s. A new person on another side is still announced after the 4 s cooldown.
-- **Server clock**, read through an injected monotonic `Clock`. The phone's clock is never used.
+- **Server clock**, read through an injected monotonic `Clock` in integer ms. The phone's clock is never used.
 
 The defaults are starting points. Tune them at Checkpoint 3 with `PUT /tuning` while the replay harness runs.
 
@@ -288,9 +296,9 @@ The defaults are starting points. Tune them at Checkpoint 3 with `PUT /tuning` w
 
 ## 9. Live view
 
-- `GET /` serves `static/live.html`, with no build step and no framework.
+- `GET /` serves `static/live.html`, with no build step and no framework. When a key is configured, the page reads `key` from its own URL and adds it to every poll.
 - It polls `/latest.jpg` and `/latest` about every 300 ms and draws the boxes on a canvas from normalized coordinates. Each box shows its label and conf, and hits are colored differently from detections below `conf_alert`.
-- It polls `/events` every second for the alert log: time, side, conf and description.
+- It polls `/events` every second for the alert log: `at`, side, conf and description.
 - A header strip shows the model, device, incoming fps, p50/p95 server ms, seconds since the last frame, and the current tuning.
 - **Change from the plan:** the plan had the server draw boxes onto the image. Drawing them in the browser keeps that work out of the frame path, and the same page serves as the "command center" in the demo.
 
@@ -312,7 +320,7 @@ The defaults are starting points. Tune them at Checkpoint 3 with `PUT /tuning` w
   - To roll back, point `MODEL_PATH` at the previous file and restart.
   - Agree the class names with C before C's first training run.
 - **Startup label check:** if none of `ALERT_LABELS` appear in the model's class names, the server logs loudly and falls back to stock `yolo26s`. Without this check, renamed classes would silently filter out every detection, and alerts would just stop. `/health` shows the model file, its SHA-256 and its class names.
-- **Zero-shot fallback:** D's `zeroshot.py` implements `Detector`, and `DETECTOR=zeroshot` selects it. It needs a GPU to keep up with the stream, so it can only run live on a laptop, not on the Vultr CPU box. Measure its latency before relying on it.
+- **Zero-shot fallback:** D's `zeroshot.py` exposes a plain `detect(image) -> list[dict]` (label, conf, normalized box). B's adapter in `detector.py` wraps it as a `Detector`, and `DETECTOR=zeroshot` selects it. It needs a GPU to keep up with the stream, so it can only run live on a laptop, not on the Vultr CPU box. Measure its latency before relying on it.
 - **Serving on CPU (Vultr):** export each model to ONNX with `model.export(format="onnx", nms=False)` and point `MODEL_PATH` at the `.onnx` file. Ultralytics lists YOLO26s at about 87 ms per image on CPU with ONNX at 640 px; check that number on the instance. On CPU, stay at `yolo26s` and 640 px. YOLO26m is listed at about 220 ms at 640 px, and a 960 px input would be slower still.
 
 ## 12. Infra
@@ -369,7 +377,7 @@ A's app has an editable server URL, so switching takes one paste. Practice the s
 User=iris
 WorkingDirectory=/opt/iris/server
 EnvironmentFile=/etc/iris.env
-ExecStart=/opt/iris/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1
+ExecStart=/opt/iris/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
 Restart=always
 RestartSec=2
 NoNewPrivileges=true
@@ -458,7 +466,8 @@ MAX_UPLOAD_BYTES=2000000
 
 **Endpoints**
 - [ ] `X-Iris-Key` on `POST /frame` and `PUT /tuning`, compared in constant time.
-- [ ] Optionally, the same key as a `?key=` parameter on the read endpoints, since they show the camera feed.
+- [ ] The same key as a `?key=` parameter on the live view endpoints, since they show the camera feed.
+- [ ] uvicorn runs with `--no-access-log`, so `?key=` never lands in a log. Caddy's access log stays off, which is its default. `frames.jsonl` already records every frame.
 - [ ] A 2 MB body cap at Caddy and in the app, a 4096 px decode guard, and 400 for anything that isn't an image.
 - [ ] No file paths or pickles from requests. Weights load only from the server's disk.
 
@@ -469,7 +478,7 @@ MAX_UPLOAD_BYTES=2000000
 
 **After the event**
 - [ ] Confirm the teardown workflow destroyed the instance. A stopped instance still bills.
-- [ ] Revoke the Vultr API key, the Gemini key and the deploy key.
+- [ ] Revoke the Vultr API key, the Gemini key and the deploy key, and rotate `IRIS_API_KEY`. The live view URL carries the key, so it may be in a browser history or a shared link.
 
 ### Judging runbook
 
@@ -483,20 +492,20 @@ MAX_UPLOAD_BYTES=2000000
 
 There are two seams, to be confirmed in `/to-spec`.
 
-1. **The HTTP API** is the primary seam. Tests go through `create_app(...)` with httpx `TestClient`, injecting a `FakeDetector` (scripted detections per call), a `FakeClock` (advanced by hand) and a `FakeDescriber` (returns text, raises, or sleeps past the timeout).
+1. **The HTTP API** is the primary seam. Tests go through `create_app(...)` with httpx `TestClient`, injecting a `FakeDetector` (scripted detections per call), a `FakeClock` (integer ms, advanced by hand), a `FakeWallClock` (a fixed UTC time) and a `FakeDescriber` (returns text, raises, or sleeps past the timeout).
    - Frames are real JPEG bytes, so decoding is real.
    - This seam covers the contract shape, the alert policy, errors, events, descriptions and tuning.
    - No test reaches into `alerts.py` or `store.py` directly, so both can be rewritten freely.
 2. **The real artifact.** The replay harness runs against a running server with the real model and D's demo clips. This is gate 5 of the `verify` skill.
    - It reads a clip, samples it at 2.5 fps, resizes to 640 px wide, encodes JPEG at quality 70, and posts one frame at a time, matching the contract.
    - It prints each alert with its clip time, then fps and server and round-trip p50/p95.
-   - With `--expect clip.json` (D's time windows when a person is visible), it prints pass or fail. Every window must get an alert within 2 s of starting, and no alert may fire outside a window plus a 1 s grace period.
+   - With `--expect clip.json` (D's sightings for the clip), it prints pass or fail. Every sighting must get an alert within 2 s of starting, and no alert may fire outside a sighting plus a 1 s grace period.
 
 There is also one smoke test with the real model: post `tests/fixtures/person.jpg` and get at least one person detection. It is skipped when the weights are missing.
 
 ### Worked scenarios
 
-The expected values come from the rules in section 7, not from the code, and a prototype of the policy reproduced each one. Defaults apply, with frames every 0.4 s. "Hit" means a person at conf 0.6 on the left, unless stated otherwise.
+The expected values come from the rules in section 7, not from the code, and a prototype of the policy reproduced each one. Defaults apply, with frames every 0.4 s. Times are shown in seconds for reading; tests drive the fake clock in integer ms (0, 400, 800, …). "Hit" means a person at conf 0.6 on the left, unless stated otherwise.
 
 | # | Frames | Expected |
 | --- | --- | --- |
@@ -513,6 +522,7 @@ The expected values come from the rules in section 7, not from the code, and a p
 | 11 | A `car` at conf 0.9 every frame (stock model) | No detections and no alerts |
 | 12 | Gemini sleeps past the timeout | `/frame` replies normally and `description` stays `null` |
 | 13 | Non-image body, 3 MB body, wrong key | 400, 413, 401 |
+| 14 | Left hit at 0.0, then right hit (conf 0.6) at 0.4 | Alert at 0.4 on the right: the window ignores sides |
 
 ## 14. Tickets
 
@@ -521,12 +531,12 @@ These are tracer-bullet slices for `/to-tickets`. Each one is demoable on its ow
 | # | Ticket | Blocked by | Done when |
 | --- | --- | --- | --- |
 | 01 | **Walking skeleton.** `/frame` returns the contract JSON from stock YOLO26 (person only), plus `/health`, `create_app` with injectable dependencies, pyproject, ruff, mypy and pytest. | none | The team's curl test and the app's first POST both get JSON. This is **Checkpoint 1**. |
-| 02 | **Alert policy.** Window, cooldown, same-side repeat and side, tuned from config. | 01 | Scenarios 1–11 pass at the HTTP seam. |
+| 02 | **Alert policy.** Window, cooldown, same-side repeat and side, tuned from config. | 01 | Scenarios 1–11 and 14 pass at the HTTP seam. |
 | 03 | **Replay harness and latency logs.** `frames.jsonl`, plus p50/p95 in `/health`. | 01 | The harness prints alerts and latency for one of D's clips against the laptop, and `--preflight` prints PASS or FAIL. |
 | 04 | **Hardening and key.** Size cap, decode guard, `X-Iris-Key`. | 01 | Scenario 13 passes, and A's app sends the key. |
 | 05 | **Vultr deploy.** Bootstrap, systemd, Caddy, `update.sh` with rollback, ONNX model on CPU, security checklist. | 01, 04 | The harness passes against the https URL with server p95 under 200 ms, the app works over cellular, killing the process recovers in about 2 s, a deliberately broken commit rolls back by itself, and a dry run of the teardown workflow lists the instance. Start early (hour 3–12), as the plan says. |
 | 06 | **Live view and events.** `/latest`, `/latest.jpg`, `/events` and the page. | 02 | A mock clip from the app shows boxes and the event log. This is **Checkpoint 2**. |
-| 07 | **Detector swap.** C's `best.pt`, label mapping, fallback to stock, and the zero-shot hook. | 01 | `/health` shows C's model, the harness shows its alerts, and deleting the weights falls back cleanly. |
+| 07 | **Detector swap.** C's `best.pt`, label mapping, fallback to stock, and the adapter for D's zero-shot `detect`. | 01 | `/health` shows C's model, the harness shows its alerts, and deleting the weights falls back cleanly. |
 | 08 | **Gemini descriptions.** Async on alerts, in `/frame`, `/events` and the live view. | 02, 06 | Scenario 12 passes, and a real alert shows a description within about 3 s. |
 | 09 | **Runtime tuning.** `GET`/`PUT /tuning` plus controls in the live view. | 02, 04, 06 | You can tune during a harness run without a restart. Used for **Checkpoint 3**. |
 
@@ -647,5 +657,5 @@ The whole agent setup is personal to B. Nothing it creates is committed, so team
    - Keep a primary and a fallback server URL, switching to the fallback after 3 failures in a row and showing which one is active on the status screen.
    - Read replies as a tolerant reader (section 3): `label` and `side` as `String`, new fields `Optional`, and a decode failure treated as "no alert". Optionally, decode the `docs/contract/` fixtures in a Swift unit test.
 2. **C:** What are the final class names and training image size? If C trains at 960 px, frames should arrive at 960 wide too, and that is a contract change to agree with A.
-3. **D:** How fast is the zero-shot model on a laptop GPU? Is it a live fallback or offline only? Can D provide `--expect` time windows for each demo clip?
+3. **D:** How fast is the zero-shot model on a laptop GPU? Is it a live fallback or offline only? Can D provide `--expect` sightings for each demo clip? And can D expose `detect(image) -> list[dict]` (label, conf, normalized box) from `zeroshot.py`, so B can adapt it without D importing B's code?
 4. **Everyone:** Whose Vultr credits pay for the serving box?
