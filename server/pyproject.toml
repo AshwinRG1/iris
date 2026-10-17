@@ -16,6 +16,11 @@ module = ["zeroshot"]
 follow_imports = "skip"
 ignore_errors = true
 
+[[tool.mypy.overrides]]
+module = ["torch", "torch.*", "ultralytics", "ultralytics.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

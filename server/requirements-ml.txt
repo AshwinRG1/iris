@@ -1,0 +1,5 @@
+# Install on top of requirements.txt. Not needed for tests or CI.
+# On CPU-only boxes (Vultr), install CPU torch FIRST, or pip pulls the multi-GB CUDA build:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+-r requirements.txt
+ultralytics==8.4.178

@@ -1,30 +1,11 @@
-from datetime import UTC, datetime
 from typing import Annotated
 
+from conftest import FakeClock, FakeDescriber, FakeDetector, FakeWallClock
 from fastapi import Depends
 from fastapi.testclient import TestClient
 
 from config import Settings
 from main import Deps, create_app, get_deps
-
-
-class FakeDetector:
-    name = "fake"
-
-
-class FakeDescriber:
-    async def describe(self, jpeg: bytes) -> str:
-        return "a chair"
-
-
-class FakeClock:
-    def now_ms(self) -> int:
-        return 0
-
-
-class FakeWallClock:
-    def now(self) -> datetime:
-        return datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def _fakes() -> tuple[FakeDetector, FakeDescriber, FakeClock, FakeWallClock, Settings]:
