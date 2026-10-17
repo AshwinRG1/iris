@@ -4,12 +4,15 @@
 #   bash /opt/iris/deploy/update.sh <ref>      # branch (means origin/<branch>), tag or commit
 #
 # Steps: fetch, check out <ref>, install requirements, record IRIS_COMMIT, restart iris, wait
-# for /health to report ready with auth on. If that fails, the previous commit and the previous
-# IRIS_COMMIT come back, and the script exits non-zero. Re-running the ref that is already
-# checked out only verifies health. An unknown ref exits before anything changes.
+# for /health to report ready, auth on and "commit" equal to the new short sha. If that fails,
+# the previous commit and the previous IRIS_COMMIT come back, and the script exits non-zero.
+# Re-running the ref that is already checked out only verifies health. An unknown ref exits
+# before anything changes.
 #
-# A kill (HUP, INT, TERM) after the checkout rolls back too. Even so, run it under nohup or
-# systemd-run so a dropped SSH session does not interrupt it at all.
+# A kill (HUP, INT, TERM) after the checkout rolls back too; after a hangup the output goes to
+# IRIS_UPDATE_LOG. Still, run it so a dropped SSH session cannot interrupt it: under nohup, or
+# systemd-run -p TimeoutStopSec=300 (the default 90 s stop timeout would SIGKILL a rollback,
+# which can take about 180 s: pip, then up to 60 health tries).
 #
 # The script never sources, prints or rewrites anything in the env file except IRIS_COMMIT,
 # and never touches the models directory or torch.
@@ -25,6 +28,8 @@
 #                          (IRIS_DEPLOY_KEY, /root/.ssh/iris_deploy). An inherited
 #                          GIT_SSH_COMMAND is ignored.
 #   IRIS_LOCK_FILE         flock file so two updates cannot overlap (default /run/iris-update.lock).
+#   IRIS_UPDATE_LOG        where output goes once the terminal is gone
+#                          (default /var/log/iris-update.log).
 set -euo pipefail
 
 APP="${IRIS_APP_DIR:-/opt/iris}"
@@ -34,18 +39,29 @@ HEALTH_URL="${IRIS_HEALTH_URL:-http://127.0.0.1:8000/health}"
 HEALTH_TIMEOUT_S="${IRIS_HEALTH_TIMEOUT_S:-60}"
 SYSTEMCTL="${IRIS_SYSTEMCTL:-systemctl}"
 LOCK_FILE="${IRIS_LOCK_FILE:-/run/iris-update.lock}"
+UPDATE_LOG="${IRIS_UPDATE_LOG:-/var/log/iris-update.log}"
 IRIS_DEPLOY_KEY="${IRIS_DEPLOY_KEY:-/root/.ssh/iris_deploy}"
 GIT_SSH_COMMAND="${IRIS_GIT_SSH:-ssh -i $IRIS_DEPLOY_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/root/.ssh/known_hosts}"
 export GIT_SSH_COMMAND
 unset GIT_DIR GIT_WORK_TREE
 
-log() { printf '==> %s\n' "$*"; }
-die() { printf '%s\n' "$*" >&2; exit 1; }
+ENV_TMP="" # temp copy of the env file while it is being rewritten
 
-# Reads a /health body on stdin; prints ready, authoff, error:<load_error> or wait.
+# Output is best effort: a hung-up terminal must not stop a rollback under set -e.
+log() { printf '==> %s\n' "$*" || true; }
+die() {
+  printf '%s\n' "$*" >&2 || true
+  exit 1
+}
+to_update_log() { exec >>"$UPDATE_LOG" 2>&1 || true; }
+cleanup_env_tmp() { [ -z "${ENV_TMP:-}" ] || rm -f "$ENV_TMP"; }
+trap cleanup_env_tmp EXIT
+
+# Reads a /health body on stdin; $1 is the expected short commit. Prints ready, authoff,
+# error:<load_error>, mismatch:<reported commit or "none"> or wait.
 health_state() {
   python3 -c '
-import json, sys
+import json, re, sys
 try:
     h = json.load(sys.stdin)
 except ValueError:
@@ -57,18 +73,23 @@ elif not h.get("ready"):
     print("wait")
 elif h.get("auth") != "on":
     print("authoff")
+elif h.get("commit") != sys.argv[1]:
+    c = h.get("commit")
+    ok = isinstance(c, str) and re.fullmatch(r"[A-Za-z0-9._-]{1,40}", c)
+    print("mismatch:" + (c if ok else "none"))
 else:
     print("ready")
-'
+' "$1"
 }
 
-# Returns 0 once /health is ready with auth on; 1 on timeout, auth off or load_error.
+# Returns 0 once /health is ready, auth on and reporting commit $1; 1 on timeout, auth off or
+# load_error.
 wait_health() {
-  local body state _
-  log "waiting up to ${HEALTH_TIMEOUT_S} s for /health"
+  local expected="$1" body state reported="" _
+  log "waiting up to ${HEALTH_TIMEOUT_S} s for /health (commit $expected)"
   for _ in $(seq 1 "$HEALTH_TIMEOUT_S"); do
     body="$(curl -fsS --max-time 2 "$HEALTH_URL" 2>/dev/null || true)"
-    state="$(health_state <<<"$body")"
+    state="$(health_state "$expected" <<<"$body")"
     case "$state" in
       ready) return 0 ;;
       authoff)
@@ -79,10 +100,15 @@ wait_health() {
         echo "model failed to load (${state#error:}); see: journalctl -u iris -n 100" >&2
         return 1
         ;;
+      mismatch:*) reported="${state#mismatch:}" ;;
     esac
     sleep 1
   done
-  echo "server did not report ready; see: journalctl -u iris -n 100" >&2
+  if [ -n "$reported" ]; then
+    echo "commit mismatch: expected $expected, /health reported $reported" >&2
+  else
+    echo "server did not report ready; see: journalctl -u iris -n 100" >&2
+  fi
   return 1
 }
 
@@ -98,23 +124,24 @@ copy_perms() {
 
 # Replace the IRIS_COMMIT line with $1 (a whole "IRIS_COMMIT=..." line), or append it. Every other
 # line stays byte-for-byte. The new file is built beside the old one and renamed over it, so a
-# crash leaves either the old file or the new one, and a failure leaves no copy of the key behind.
+# crash leaves either the old file or the new one. ENV_TMP lets rollback and the EXIT trap remove
+# the temp copy (it holds the key) if the script is killed or fails midway.
 set_commit_line() {
-  local tmp
-  tmp="$(mktemp "$(dirname "$ENV_FILE")/.iris.env.XXXXXX")" || return 1
-  {
-    NEWLINE="$1" awk '
-      /^IRIS_COMMIT=/ { if (!done) print ENVIRON["NEWLINE"]; done = 1; next }
-      { print }
-      END { if (!done) print ENVIRON["NEWLINE"] }
-    ' "$ENV_FILE" >"$tmp" &&
-      copy_perms "$ENV_FILE" "$tmp" &&
-      sync &&
-      mv -f "$tmp" "$ENV_FILE"
-  } || {
-    rm -f "$tmp"
+  ENV_TMP="$(mktemp "$(dirname "$ENV_FILE")/.iris.env.XXXXXX")" || return 1
+  if NEWLINE="$1" awk '
+    /^IRIS_COMMIT=/ { if (!done) print ENVIRON["NEWLINE"]; done = 1; next }
+    { print }
+    END { if (!done) print ENVIRON["NEWLINE"] }
+  ' "$ENV_FILE" >"$ENV_TMP" &&
+    copy_perms "$ENV_FILE" "$ENV_TMP" &&
+    sync &&
+    mv -f "$ENV_TMP" "$ENV_FILE"; then
+    ENV_TMP=""
+  else
+    cleanup_env_tmp
+    ENV_TMP=""
     return 1
-  }
+  fi
 }
 
 # Each step is checked explicitly: inside `if` or `&&` set -e is off, so a failed pip must
@@ -128,10 +155,14 @@ install_and_restart() {
 # Signals are ignored meanwhile so a second kill cannot leave the box half rolled back.
 rollback() {
   trap '' HUP INT TERM
+  cleanup_env_tmp
+  ENV_TMP=""
+  # If stdout is gone (hung-up terminal), keep reporting in the update log instead.
+  : >>/dev/stdout 2>/dev/null || to_update_log
   log "$1; rolling back to $OLD_SHORT"
   if git -C "$APP" checkout -q -f --detach "$OLD_SHA" &&
     set_commit_line "$OLD_LINE" &&
-    install_and_restart && wait_health; then
+    install_and_restart && wait_health "${OLD_LINE#IRIS_COMMIT=}"; then
     die "deploy of $NEW_SHORT failed; rolled back to $OLD_SHORT"
   fi
   die "deploy of $NEW_SHORT failed and ROLLBACK ALSO FAILED on $OLD_SHORT; see: journalctl -u iris -n 100"
@@ -162,17 +193,19 @@ NEW_SHORT="$(git -C "$APP" rev-parse --short "$NEW_SHA")"
 
 if [ "$NEW_SHA" = "$OLD_SHA" ]; then
   log "$REF is already deployed ($NEW_SHORT); verifying health only"
-  wait_health || die "unhealthy on $NEW_SHORT; nothing to roll back to"
+  wait_health "$NEW_SHORT" || die "unhealthy on $NEW_SHORT; nothing to roll back to"
   log "ready, auth on (commit $NEW_SHORT)"
   exit 0
 fi
 
 log "deploying $NEW_SHORT (was $OLD_SHORT)"
-# From here a kill (dropped SSH session, Ctrl-C) rolls back instead of leaving the new commit.
-trap 'rollback "interrupted"' HUP INT TERM
+# From here a kill rolls back instead of leaving the new commit. After a hangup the terminal is
+# gone, so HUP switches output to the update log before anything is printed.
+trap 'to_update_log; rollback "interrupted (hangup)"' HUP
+trap 'rollback "interrupted"' INT TERM
 if git -C "$APP" checkout -q -f --detach "$NEW_SHA" &&
   set_commit_line "IRIS_COMMIT=$NEW_SHORT" &&
-  install_and_restart && wait_health; then
+  install_and_restart && wait_health "$NEW_SHORT"; then
   trap - HUP INT TERM
   log "ready, auth on (commit $NEW_SHORT)"
   exit 0

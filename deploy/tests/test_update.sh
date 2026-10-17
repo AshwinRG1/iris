@@ -46,14 +46,28 @@ restarts() { grep -cx 'restart iris' "$W/systemctl.log" || true; }
 # Serves $APP/health.json (or a not-ready body) on a high port; started and killed by PID.
 start_health() {
   cat >"$W/health_server.py" <<'PY'
-import http.server, os, sys
+import http.server, json, os, sys
 
-app = sys.argv[1]
+# argv: checkout dir, env file, world dir. Like the real server, "commit" comes from IRIS_COMMIT
+# in the env file. $world/pin_commit pins a different reported commit; $world/no_commit drops it.
+app, envfile, world = sys.argv[1:4]
+
+def env_commit():
+    for line in open(envfile):
+        if line.startswith("IRIS_COMMIT="):
+            return line.rstrip("\n").split("=", 1)[1]
+    return None
 
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         path = os.path.join(app, "health.json")
-        body = open(path, "rb").read() if os.path.exists(path) else b'{"ready": false}'
+        h = json.load(open(path)) if os.path.exists(path) else {"ready": False}
+        pin = os.path.join(world, "pin_commit")
+        if os.path.exists(pin):
+            h["commit"] = open(pin).read().strip()
+        elif not os.path.exists(os.path.join(world, "no_commit")):
+            h["commit"] = env_commit()
+        body = json.dumps(h).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
@@ -65,7 +79,7 @@ srv = http.server.HTTPServer(("127.0.0.1", 0), H)
 print(srv.server_address[1], flush=True)
 srv.serve_forever()
 PY
-  python3 "$W/health_server.py" "$APP" >"$W/port" &
+  python3 "$W/health_server.py" "$APP" "$ENVF" "$W" >"$W/port" &
   HEALTH_PID=$!
   local _
   for _ in $(seq 1 50); do
@@ -152,26 +166,36 @@ run_update() { # run_update <args...>; sets RC, OUT, ERR
   OUT="$W/out.$RANDOM"
   ERR="$W/err.$RANDOM"
   set +e
-  IRIS_APP_DIR="$APP" IRIS_ENV_FILE="$ENVF" IRIS_VENV="$W/venv" \
-    IRIS_HEALTH_URL="http://127.0.0.1:$PORT/health" IRIS_HEALTH_TIMEOUT_S=3 \
-    IRIS_SYSTEMCTL="$W/bin/systemctl" IRIS_LOCK_FILE="$W/lock" PATH="$W/bin:$PATH" \
-    bash "$UPDATE" "$@" >"$OUT" 2>"$ERR"
+  upd_args
+  "${UPD[@]}" bash "$UPDATE" "$@" >"$OUT" 2>"$ERR"
   RC=$?
   set -e
 }
 
-# Start an update in the background with a long health wait; sets BGPID, OUT, ERR. Returns once
-# the deploy has restarted the service (so it is inside the health wait).
-start_update_bg() { # start_update_bg <timeout> <args...>
-  local t="$1" _
+# Run a command with the stand-in environment for update.sh (health timeout $HEALTH_T, default 3).
+# $EXTRA_PATH, when set, goes first on PATH.
+upd_args() {
+  UPD=(env IRIS_APP_DIR="$APP" IRIS_ENV_FILE="$ENVF" IRIS_VENV="$W/venv" \
+    IRIS_HEALTH_URL="http://127.0.0.1:$PORT/health" IRIS_HEALTH_TIMEOUT_S="${HEALTH_T:-3}" \
+    IRIS_SYSTEMCTL="$W/bin/systemctl" IRIS_LOCK_FILE="$W/lock" IRIS_UPDATE_LOG="$W/update.log" \
+    PATH="${EXTRA_PATH:+$EXTRA_PATH:}$W/bin:$PATH")
+}
+
+# Start an update in the background; sets BGPID, OUT, ERR.
+start_update_bg() { # start_update_bg <health-timeout> <args...>
+  HEALTH_T="$1"
   shift
   OUT="$W/out.$RANDOM"
   ERR="$W/err.$RANDOM"
-  IRIS_APP_DIR="$APP" IRIS_ENV_FILE="$ENVF" IRIS_VENV="$W/venv" \
-    IRIS_HEALTH_URL="http://127.0.0.1:$PORT/health" IRIS_HEALTH_TIMEOUT_S="$t" \
-    IRIS_SYSTEMCTL="$W/bin/systemctl" IRIS_LOCK_FILE="$W/lock" PATH="$W/bin:$PATH" \
-    bash "$UPDATE" "$@" >"$OUT" 2>"$ERR" &
+  upd_args
+  "${UPD[@]}" bash "$UPDATE" "$@" >"$OUT" 2>"$ERR" &
   BGPID=$!
+  HEALTH_T=""
+}
+
+# Wait until the service was restarted (the deploy is inside its health wait).
+wait_in_health() {
+  local _
   for _ in $(seq 1 100); do
     [ "$(restarts)" -ge 1 ] && break
     sleep 0.1
@@ -339,6 +363,7 @@ new_world 12
 cp "$ENVF" "$W/env.before"
 PREV_SHA="$(head_of)"
 start_update_bg 30 bad
+wait_in_health
 kill -TERM "$BGPID"
 set +e
 wait "$BGPID"
@@ -356,6 +381,7 @@ end_world
 new_world 13
 PREV_SHA="$(head_of)"
 start_update_bg 30 bad
+wait_in_health
 FIRST_OUT="$OUT"
 FIRST_ERR="$ERR"
 run_update good
@@ -370,6 +396,109 @@ OUT="$FIRST_OUT"
 ERR="$FIRST_ERR"
 check "lock: first run still rolled back" says "rolled back to ${PREV_SHA:0:7}"
 check "lock: first run left previous commit" eq "$(head_of)" "$PREV_SHA"
+end_world
+
+no_key_in_log() { ! grep -qF "$TEST_KEY" "$W/update.log"; }
+log_says() { grep -q -- "$1" "$W/update.log"; }
+env_leftovers() { find "$W/etc" -name '.iris.env.*' | wc -l | tr -d ' '; }
+
+# --- health must report the deployed commit
+new_world 16
+cp "$ENVF" "$W/env.before"
+PREV_SHA="$(head_of)"
+echo 0ld0ld0 >"$W/pin_commit" # healthy and ready, but still reporting the old commit
+run_update good
+check "stale commit: exits non-zero" ne "$RC" 0
+check "stale commit: says commit mismatch" says "commit mismatch"
+check "stale commit: names expected and reported" says "expected $(git -C "$W/origin.git" rev-parse --short good).*0ld0ld0"
+check "stale commit: previous commit checked out" eq "$(head_of)" "$PREV_SHA"
+check "stale commit: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0ld0ld0
+check "stale commit: says rolled back" says "rolled back to ${PREV_SHA:0:7}"
+check "stale commit: key not in output" no_key_leak
+end_world
+
+new_world 17
+cp "$ENVF" "$W/env.before"
+PREV_SHA="$(head_of)"
+: >"$W/no_commit" # /health has no commit field at all
+run_update good
+check "missing commit: exits non-zero" ne "$RC" 0
+check "missing commit: says commit mismatch" says "commit mismatch"
+check "missing commit: previous commit checked out" eq "$(head_of)" "$PREV_SHA"
+check "missing commit: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0ld0ld0
+end_world
+
+new_world 18
+run_update good
+HEAD1="$(head_of)"
+echo "${HEAD1:0:3}dead" >"$W/pin_commit" # re-check of the deployed commit must also match
+run_update good
+check "re-check: wrong commit fails" ne "$RC" 0
+check "re-check: says commit mismatch" says "commit mismatch"
+check "re-check: HEAD unchanged" eq "$(head_of)" "$HEAD1"
+end_world
+
+# --- SIGHUP (dropped SSH session) rolls back even though the terminal is gone
+new_world 14
+cp "$ENVF" "$W/env.before"
+PREV_SHA="$(head_of)"
+cat >"$W/pty_run.py" <<'PY'
+import fcntl, os, pty, select, subprocess, sys, termios, time
+
+# Run argv with a fresh pty as stdin/stdout/stderr and controlling tty; once the service was
+# restarted (logfile has "restart iris"), close the pty master like sshd hanging up.
+logfile, argv = sys.argv[1], sys.argv[2:]
+master, slave = pty.openpty()
+proc = subprocess.Popen(argv, stdin=slave, stdout=slave, stderr=slave, start_new_session=True,
+                        preexec_fn=lambda: fcntl.ioctl(0, termios.TIOCSCTTY, 0))
+os.close(slave)
+start = time.time()
+while time.time() - start < 20 and "restart iris" not in open(logfile).read():
+    if select.select([master], [], [], 0.1)[0]:
+        os.read(master, 4096)
+time.sleep(0.5)
+os.close(master)
+sys.exit(proc.wait(timeout=90))
+PY
+HEALTH_T=30
+upd_args
+set +e
+"${UPD[@]}" python3 "$W/pty_run.py" "$W/systemctl.log" bash "$UPDATE" bad >/dev/null 2>&1
+RC=$?
+set -e
+HEALTH_T=""
+check "hangup: exits non-zero" ne "$RC" 0
+check "hangup: previous commit checked out" eq "$(head_of)" "$PREV_SHA"
+check "hangup: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0ld0ld0
+check "hangup: env file identical" eq "$(hash_of "$ENVF")" "$(hash_of "$W/env.before")"
+check "hangup: two restarts (deploy and rollback)" eq "$(restarts)" 2
+check "hangup: update log says rolled back" log_says "rolled back to ${PREV_SHA:0:7}"
+check "hangup: key not in update log" no_key_in_log
+end_world
+
+# --- TERM during the env rewrite leaves no temp copy of the key
+new_world 15
+mkdir -p "$W/slow"
+printf '#!/usr/bin/env bash\nsleep 2\n' >"$W/slow/sync"
+chmod +x "$W/slow/sync"
+PREV_SHA="$(head_of)"
+EXTRA_PATH="$W/slow"
+start_update_bg 30 good
+EXTRA_PATH=""
+for _ in $(seq 1 100); do
+  [ "$(env_leftovers)" -ge 1 ] && break
+  sleep 0.05
+done
+check "rewrite: temp file existed mid-rewrite" eq "$([ "$(env_leftovers)" -ge 1 ] && echo yes)" yes
+kill -TERM "$BGPID"
+set +e
+wait "$BGPID"
+RC=$?
+set -e
+check "rewrite TERM: exits non-zero" ne "$RC" 0
+check "rewrite TERM: no temp file left" eq "$(env_leftovers)" 0
+check "rewrite TERM: previous commit checked out" eq "$(head_of)" "$PREV_SHA"
+check "rewrite TERM: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0ld0ld0
 end_world
 
 echo "flock: $FLOCK_KIND (real = util-linux, shim = python stand-in); skipped: none"
