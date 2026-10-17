@@ -55,7 +55,12 @@
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs camera access to stream from your phone's camera as a mock device feed.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>This lets your phone find and connect to your glasses over Wi-Fi.</string>
+	<string>Connects to your glasses and sends camera frames to the Iris server on your local network.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app needs microphone access to record sound from your glasses' microphone alongside video.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

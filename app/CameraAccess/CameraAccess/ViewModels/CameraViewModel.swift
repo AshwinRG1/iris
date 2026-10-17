@@ -55,7 +55,9 @@ final class CameraViewModel {
 
   /// The device session's state, mirrored from `DeviceSession.statePublisher`.
   /// `.idle`/`.stopped` mean no live session.
-  var sessionState: DeviceSessionState = .idle
+  var sessionState: DeviceSessionState = .idle {
+    didSet { updateUploadStreamingState() }
+  }
 
   // MARK: - Preview
 
@@ -66,7 +68,12 @@ final class CameraViewModel {
 
   /// The stream's state, mirrored from `Stream.statePublisher`. `.stopped` means
   /// no live stream.
-  var streamState: StreamState = .stopped
+  var streamState: StreamState = .stopped {
+    didSet { updateUploadStreamingState() }
+  }
+
+  /// Shared by the glasses and Mock Device Kit frame path, the HUD and status UI.
+  let frameUploader = FrameUploader()
 
   // MARK: - Capture preview
 
@@ -421,6 +428,7 @@ final class CameraViewModel {
   }
 
   private func handleDidEnterBackground() {
+    frameUploader.setStreaming(false)
     guard hasSession, hasStream, sessionState != .stopping else { return }
 
     beginBackgroundStopErrorSuppression()
@@ -502,15 +510,15 @@ final class CameraViewModel {
 
       Task { @MainActor [weak self] in
         guard let self else { return }
-        // Keep the live surface stable while a capture preview is onscreen.
-        if UIApplication.shared.applicationState != .background,
-          activePreview == nil,
-          !isCapturingPhoto,
-          let image = previewImage
-        {
-          self.currentVideoFrame = image
-          if !self.hasReceivedFirstFrame {
-            self.hasReceivedFirstFrame = true
+        if UIApplication.shared.applicationState != .background, let image = previewImage {
+          // Upload the actual live feed even while a captured photo is displayed.
+          self.frameUploader.submit(image)
+          // Keep the live surface stable while a capture preview is onscreen.
+          if activePreview == nil, !isCapturingPhoto {
+            self.currentVideoFrame = image
+            if !self.hasReceivedFirstFrame {
+              self.hasReceivedFirstFrame = true
+            }
           }
         }
         // Capture the actual recording start (first written frame) once, so the timer
@@ -538,6 +546,12 @@ final class CameraViewModel {
       Task { await stopVideoRecording() }
       clearStreamResources()
     }
+  }
+
+  private func updateUploadStreamingState() {
+    frameUploader.setStreaming(
+      isSessionActive && isStreaming && UIApplication.shared.applicationState != .background
+    )
   }
 
   /// Single stream-teardown convergence point.
