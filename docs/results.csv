@@ -1,0 +1,2 @@
+timestamp_utc,model,data,split,classes,images,precision,recall,map50,map50_95,inference_ms_per_image,preprocess_ms_per_image,postprocess_ms_per_image,device,imgsz,batch,conf,iou,ultralytics_version,artifacts
+2026-10-17T08:10:27.307883+00:00,yolo26s.pt,C:\Users\madhs\iris\data\test\data\data.yaml,test,person,634,0.4901517000214114,0.31115997800989553,0.3248103019102201,0.1480816891042657,125.29876703464929,0.6528640382275741,1.8782433753958772,cpu,640,1,0.001,0.7,8.4.178,C:\Users\madhs\iris\runs\detect\runs\evaluation\0_yolo26s
