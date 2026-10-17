@@ -364,7 +364,7 @@ A's app has an editable server URL, so switching takes one paste. Practice the s
 - **`bootstrap.sh`**, run once as root:
   1. Install git, python3-venv and Caddy (from Caddy's official apt repo).
   2. Create an `iris` user.
-  3. Clone the repo to `/opt/iris` (use a read-only deploy key, since the repo is private), or pull it if it's already there.
+  3. Clone the repo to `/opt/iris` over HTTPS (the repo is public, so no deploy key is needed), or pull it if it's already there.
   4. Create the venv if it's missing and install `server/requirements.txt`.
   5. Copy `.env.example` to `/etc/iris.env` only if that file doesn't exist yet.
   6. Write the Caddyfile with this box's public IP filled in.
@@ -484,7 +484,7 @@ MAX_UPLOAD_BYTES=2000000
 
 **After the event**
 - [ ] Confirm the teardown workflow destroyed the instance. A stopped instance still bills.
-- [ ] Revoke the Vultr API key, the Gemini key and the deploy key, and rotate `IRIS_API_KEY`. The live view URL carries the key, so it may be in a browser history or a shared link.
+- [ ] Revoke the Vultr API key and the Gemini key, and rotate `IRIS_API_KEY`. The live view URL carries the key, so it may be in a browser history or a shared link.
 
 ### Judging runbook
 
