@@ -41,7 +41,7 @@ The team plan's contract is unchanged. This design only adds optional fields and
 
 ### `POST /frame`
 
-The request is multipart, with a field `file` holding a JPEG (640 px wide, quality 70).
+The request is multipart, with a field `file` holding a JPEG (640 px wide, quality 70). The `file` part may or may not carry a filename; the server reads its raw bytes either way.
 
 **New:** if the server has `IRIS_API_KEY` set, the request must carry an `X-Iris-Key` header. Leave the key unset for local dev.
 
@@ -71,8 +71,13 @@ Errors use FastAPI's `{"detail": "..."}` shape. The app should treat any non-200
 | --- | --- |
 | 400 | The body is not a decodable image, or its sides are larger than 4096 px. |
 | 401 | The key is missing or wrong, when a key is configured. |
+| 404 | Wrong path, such as `/frame/frame`. Clients treat it like any non-200. |
+| 405 | Wrong method, such as GET on `/frame`. |
 | 413 | The body is over 2 MB. |
+| 422 | Any request that fails validation: no `file` part, a body that is not valid multipart, or a bad query value. `detail` is a short string naming the field and reason, never request data. If `file` appears twice, the first wins. |
 | 503 | The model hasn't finished loading yet. |
+
+When Caddy itself rejects a chunked body over 2 MB, its 413 has an empty body, not `{"detail": ...}`. Clients must not depend on error bodies; the app already ignores them.
 
 ### Keeping the app and server compatible
 

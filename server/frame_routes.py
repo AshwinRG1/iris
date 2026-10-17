@@ -2,9 +2,10 @@
 
 import asyncio
 import io
+import logging
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request
 from PIL import Image
 from pydantic import BaseModel
 
@@ -13,9 +14,15 @@ from auth import require_key_header
 from deps import Deps, Runtime, get_deps, get_runtime
 from detector import Detector
 from domain import Detection, Side
+from form_part import MalformedForm, read_part
 from store import Snapshot, event_json
 
 router = APIRouter()
+log = logging.getLogger("iris")
+
+
+class ErrorDetail(BaseModel):
+    detail: str
 
 
 class DetectionOut(BaseModel):
@@ -54,15 +61,43 @@ def _decode_and_detect(detector: Detector, jpeg: bytes) -> list[Detection]:
     return detector.detect(image)
 
 
-@router.post("/frame", dependencies=[Depends(require_key_header)])
+_FRAME_BODY = {
+    "requestBody": {
+        "required": True,
+        "content": {
+            "multipart/form-data": {
+                "schema": {
+                    "type": "object",
+                    "properties": {"file": {"type": "string", "format": "binary"}},
+                    "required": ["file"],
+                }
+            }
+        },
+    }
+}
+
+
+@router.post(
+    "/frame",
+    dependencies=[Depends(require_key_header)],
+    openapi_extra=_FRAME_BODY,
+    responses={code: {"model": ErrorDetail} for code in (400, 401, 413, 422, 503)},
+)
 async def frame(
-    file: UploadFile,
+    request: Request,
     deps: Annotated[Deps, Depends(get_deps)],
     runtime: Annotated[Runtime, Depends(get_runtime)],
 ) -> FrameReply:
     if not runtime.ready:
         raise HTTPException(status_code=503, detail="model not ready")
-    jpeg = await file.read()
+    try:
+        # The body streams through BodyLimitMiddleware, so this read is bounded.
+        jpeg = await read_part(request.headers.get("content-type", ""), request.stream(), "file")
+    except MalformedForm as e:
+        log.info("422 on /frame: %s", e)  # the reason never holds request bytes
+        raise HTTPException(
+            status_code=422, detail="request is not a valid multipart upload with a file part"
+        ) from e
     # Arrival time (the body is in), not completion time: the policy orders frames by arrival.
     started = deps.clock.now_ms()
     try:
