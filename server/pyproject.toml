@@ -13,6 +13,7 @@ exclude = ["zeroshot\\.py$"]
 
 [[tool.mypy.overrides]]
 module = ["zeroshot"]
+ignore_missing_imports = true
 follow_imports = "skip"
 ignore_errors = true
 

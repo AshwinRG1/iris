@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from PIL import Image
 
+from detector import ModelInfo
 from domain import Box, Detection
 
 
@@ -24,6 +25,7 @@ class FakeDetector:
     def __init__(self, script: list[list[Detection]] | None = None) -> None:
         self.script = script or []
         self.detect_threads: list[int] = []
+        self.model_info = ModelInfo("fake", "", (), None)
 
     def load(self) -> str:
         return self.device

@@ -11,7 +11,7 @@ from fastapi import FastAPI
 
 from config import Settings
 from deps import Clock, Deps, Describer, Runtime, WallClock, get_deps
-from detector import Detector, YoloDetector
+from detector import Detector, FallbackDetector, YoloDetector, ZeroShotDetector
 from frame_routes import router as frame_router
 
 __all__ = ["Deps", "app", "create_app", "get_deps"]
@@ -75,7 +75,15 @@ class _NoDescriber:
 
 def _build_app() -> FastAPI:
     s = Settings()
-    detector = YoloDetector(s.model_path, s.imgsz, s.device, s.conf_detect)
+    detector: Detector
+    if s.detector == "zeroshot":
+        from zeroshot import detect  # D's module; imported only when selected
+
+        detector = ZeroShotDetector(detect, s.device)
+    else:
+        detector = FallbackDetector(
+            lambda path, imgsz: YoloDetector(path, imgsz, s.device, s.conf_detect), s
+        )
     return create_app(detector, _NoDescriber(), _MonotonicClock(), _SystemWallClock(), s)
 
 

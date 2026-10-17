@@ -62,6 +62,10 @@ class Health(BaseModel):
     detector: str
     device: str
     load_error: str | None
+    model_file: str
+    model_sha256: str
+    class_names: list[str]
+    fallback: str | None
 
 
 @router.get("/health")
@@ -69,9 +73,14 @@ async def health(
     deps: Annotated[Deps, Depends(get_deps)],
     runtime: Annotated[Runtime, Depends(get_runtime)],
 ) -> Health:
+    info = deps.detector.model_info
     return Health(
         ready=runtime.ready,
         detector=deps.detector.name,
         device=runtime.device,
         load_error=runtime.load_error,
+        model_file=info.file,
+        model_sha256=info.sha256,
+        class_names=list(info.class_names),
+        fallback=info.fallback,
     )
