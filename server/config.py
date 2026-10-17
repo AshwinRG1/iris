@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     alert_labels: str = "person"  # comma-separated
     model_path: str = "yolo26s.pt"
     imgsz: int = 640
+    log_dir: str = "logs"
     device: str = ""  # empty: CUDA, then MPS, then CPU
 
     @property

@@ -1,7 +1,9 @@
 import io
 import threading
 from datetime import UTC, datetime
+from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from domain import Box, Detection
@@ -52,3 +54,20 @@ class FakeClock:
 class FakeWallClock:
     def now(self) -> datetime:
         return datetime(2026, 1, 1, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def log_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Keep every test's frames log out of the working directory."""
+    monkeypatch.setenv("LOG_DIR", str(tmp_path / "logs"))
+    return tmp_path / "logs"
+
+
+class ScriptedClock:
+    """Returns the given ms values in order, then stays on the last one."""
+
+    def __init__(self, values: list[int]) -> None:
+        self.values = values
+
+    def now_ms(self) -> int:
+        return self.values.pop(0) if len(self.values) > 1 else self.values[0]
