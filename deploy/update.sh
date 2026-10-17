@@ -62,6 +62,15 @@ trap cleanup_env_tmp EXIT
 health_state() {
   python3 -c '
 import json, re, sys
+
+def is_sha(x):
+    return isinstance(x, str) and re.fullmatch(r"[0-9a-f]{7,40}", x) is not None
+
+# Both hex and at least 7 chars, one a prefix of the other: older deploys wrote shorter shas.
+def same_commit(reported, expected):
+    return is_sha(reported) and is_sha(expected) and (
+        reported.startswith(expected) or expected.startswith(reported))
+
 try:
     h = json.load(sys.stdin)
 except ValueError:
@@ -73,7 +82,7 @@ elif not h.get("ready"):
     print("wait")
 elif h.get("auth") != "on":
     print("authoff")
-elif h.get("commit") != sys.argv[1]:
+elif not same_commit(h.get("commit"), sys.argv[1]):
     c = h.get("commit")
     ok = isinstance(c, str) and re.fullmatch(r"[A-Za-z0-9._-]{1,40}", c)
     print("mismatch:" + (c if ok else "none"))
@@ -176,7 +185,7 @@ exec 9>"$LOCK_FILE"
 flock -n 9 || die "another update is already running (lock $LOCK_FILE)"
 
 OLD_SHA="$(git -C "$APP" rev-parse --verify 'HEAD^{commit}')"
-OLD_SHORT="$(git -C "$APP" rev-parse --short "$OLD_SHA")"
+OLD_SHORT="$(git -C "$APP" rev-parse --short=12 "$OLD_SHA")"
 OLD_LINE="$(grep -m1 '^IRIS_COMMIT=' "$ENV_FILE" || true)"
 [ -n "$OLD_LINE" ] || OLD_LINE="IRIS_COMMIT=$OLD_SHORT"
 
@@ -189,7 +198,7 @@ if git -C "$APP" show-ref -q --verify "refs/remotes/origin/$REF"; then
 fi
 NEW_SHA="$(git -C "$APP" rev-parse --verify "$TARGET^{commit}" 2>/dev/null)" ||
   die "unknown ref: $REF (nothing was changed)"
-NEW_SHORT="$(git -C "$APP" rev-parse --short "$NEW_SHA")"
+NEW_SHORT="$(git -C "$APP" rev-parse --short=12 "$NEW_SHA")"
 
 if [ "$NEW_SHA" = "$OLD_SHA" ]; then
   log "$REF is already deployed ($NEW_SHORT); verifying health only"

@@ -151,7 +151,7 @@ SHIM
   fi
   mkdir -p "$W/etc"
   ENVF="$W/etc/iris.env"
-  printf 'IRIS_API_KEY=%s\nIRIS_COMMIT=0ld0ld0\nOTHER_SETTING=a|b&c \\d "q"\n' "$TEST_KEY" >"$ENVF"
+  printf 'IRIS_API_KEY=%s\nIRIS_COMMIT=0a0a0a0\nOTHER_SETTING=a|b&c \\d "q"\n' "$TEST_KEY" >"$ENVF"
   chmod 600 "$ENVF"
   start_health
 }
@@ -223,7 +223,7 @@ GOOD_SHA="$(git -C "$W/origin.git" rev-parse good)"
 run_update good
 check "good ref: exit 0" eq "$RC" 0
 check "good ref: HEAD is the ref" eq "$(head_of)" "$GOOD_SHA"
-check "good ref: IRIS_COMMIT is the short sha" eq "$(env_line IRIS_COMMIT)" "$(git -C "$APP" rev-parse --short HEAD)"
+check "good ref: IRIS_COMMIT is the short sha" eq "$(env_line IRIS_COMMIT)" "$(git -C "$APP" rev-parse --short=12 HEAD)"
 check "good ref: pip installed requirements-ml" grep -q -- '-r .*server/requirements-ml.txt' "$W/pip.log"
 check "good ref: pip never touched torch" no_torch
 check "good ref: service restarted" eq "$(restarts)" 1
@@ -240,7 +240,7 @@ PREV_SHA="$(head_of)"
 run_update bad
 check "bad ref: exits non-zero" ne "$RC" 0
 check "bad ref: previous commit checked out" eq "$(head_of)" "$PREV_SHA"
-check "bad ref: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0ld0ld0
+check "bad ref: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0a0a0a0
 check "bad ref: env file identical after rollback" eq "$(hash_of "$ENVF")" "$(hash_of "$W/env.before")"
 check "bad ref: says rolled back" says "rolled back to ${PREV_SHA:0:7}"
 check "bad ref: restarted twice (deploy and rollback)" eq "$(restarts)" 2
@@ -371,7 +371,7 @@ RC=$?
 set -e
 check "TERM: exits non-zero" ne "$RC" 0
 check "TERM: previous commit checked out" eq "$(head_of)" "$PREV_SHA"
-check "TERM: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0ld0ld0
+check "TERM: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0a0a0a0
 check "TERM: env file identical" eq "$(hash_of "$ENVF")" "$(hash_of "$W/env.before")"
 check "TERM: says rolled back" says "rolled back to ${PREV_SHA:0:7}"
 check "TERM: rollback restarted the service" eq "$(restarts)" 2
@@ -406,13 +406,13 @@ env_leftovers() { find "$W/etc" -name '.iris.env.*' | wc -l | tr -d ' '; }
 new_world 16
 cp "$ENVF" "$W/env.before"
 PREV_SHA="$(head_of)"
-echo 0ld0ld0 >"$W/pin_commit" # healthy and ready, but still reporting the old commit
+echo 0a0a0a0 >"$W/pin_commit" # healthy and ready, but still reporting the old commit
 run_update good
 check "stale commit: exits non-zero" ne "$RC" 0
 check "stale commit: says commit mismatch" says "commit mismatch"
-check "stale commit: names expected and reported" says "expected $(git -C "$W/origin.git" rev-parse --short good).*0ld0ld0"
+check "stale commit: names expected and reported" says "expected $(git -C "$W/origin.git" rev-parse --short=12 good).*0a0a0a0"
 check "stale commit: previous commit checked out" eq "$(head_of)" "$PREV_SHA"
-check "stale commit: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0ld0ld0
+check "stale commit: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0a0a0a0
 check "stale commit: says rolled back" says "rolled back to ${PREV_SHA:0:7}"
 check "stale commit: key not in output" no_key_leak
 end_world
@@ -425,7 +425,7 @@ run_update good
 check "missing commit: exits non-zero" ne "$RC" 0
 check "missing commit: says commit mismatch" says "commit mismatch"
 check "missing commit: previous commit checked out" eq "$(head_of)" "$PREV_SHA"
-check "missing commit: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0ld0ld0
+check "missing commit: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0a0a0a0
 end_world
 
 new_world 18
@@ -436,6 +436,33 @@ run_update good
 check "re-check: wrong commit fails" ne "$RC" 0
 check "re-check: says commit mismatch" says "commit mismatch"
 check "re-check: HEAD unchanged" eq "$(head_of)" "$HEAD1"
+end_world
+
+# --- commit comparison: 12-char expected, tolerant of shorter hex written by older deploys
+set_env_commit() { # set_env_commit <value>; edit in place (test setup only)
+  sed -i.bak "s/^IRIS_COMMIT=.*/IRIS_COMMIT=$1/" "$ENVF"
+  rm -f "$ENVF.bak"
+}
+
+new_world 19
+run_update good
+HEAD1="$(head_of)"
+check "short commit: IRIS_COMMIT written with 12 chars" eq "${#HEAD1}$(env_line IRIS_COMMIT | wc -c | tr -d ' ')" "4013"
+set_env_commit "${HEAD1:0:7}" # an older deploy wrote 7 chars
+run_update good
+check "short commit: 7-char IRIS_COMMIT re-checks OK" eq "$RC" 0
+check "short commit: HEAD unchanged" eq "$(head_of)" "$HEAD1"
+set_env_commit "${HEAD1:0:7}ffffff" # same first 7, different after
+run_update good
+check "prefix only: shared 7-char prefix but different commit is a mismatch" ne "$RC" 0
+check "prefix only: says commit mismatch" says "commit mismatch"
+set_env_commit "${HEAD1:0:6}" # too short to trust
+run_update good
+check "too short: 6-char commit is a mismatch" ne "$RC" 0
+set_env_commit "${HEAD1:0:7}"
+echo "${HEAD1:0:7}zzzzz" >"$W/pin_commit" # not hex
+run_update good
+check "non-hex: reported commit with non-hex chars is a mismatch" ne "$RC" 0
 end_world
 
 # --- SIGHUP (dropped SSH session) rolls back even though the terminal is gone
@@ -469,7 +496,7 @@ set -e
 HEALTH_T=""
 check "hangup: exits non-zero" ne "$RC" 0
 check "hangup: previous commit checked out" eq "$(head_of)" "$PREV_SHA"
-check "hangup: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0ld0ld0
+check "hangup: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0a0a0a0
 check "hangup: env file identical" eq "$(hash_of "$ENVF")" "$(hash_of "$W/env.before")"
 check "hangup: two restarts (deploy and rollback)" eq "$(restarts)" 2
 check "hangup: update log says rolled back" log_says "rolled back to ${PREV_SHA:0:7}"
@@ -498,7 +525,7 @@ set -e
 check "rewrite TERM: exits non-zero" ne "$RC" 0
 check "rewrite TERM: no temp file left" eq "$(env_leftovers)" 0
 check "rewrite TERM: previous commit checked out" eq "$(head_of)" "$PREV_SHA"
-check "rewrite TERM: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0ld0ld0
+check "rewrite TERM: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0a0a0a0
 end_world
 
 echo "flock: $FLOCK_KIND (real = util-linux, shim = python stand-in); skipped: none"
