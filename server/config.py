@@ -9,13 +9,15 @@ from domain import Tuning
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(frozen=True)
+    model_config = SettingsConfigDict(frozen=True, populate_by_name=True)
 
     detector: Literal["yolo", "zeroshot"] = "yolo"
     conf_detect: float = 0.25
     alert_labels: str = "person"  # comma-separated
     model_path: str = "yolo26s.pt"
     imgsz: int = 640
+    log_dir: str = "logs"
+    commit: str | None = Field(default=None, validation_alias="IRIS_COMMIT")
     device: str = ""  # empty: CUDA, then MPS, then CPU
 
     # Alert policy tuning. Seconds in the environment, ms inside.

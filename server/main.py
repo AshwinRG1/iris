@@ -6,6 +6,7 @@ import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import FastAPI
 
@@ -13,6 +14,7 @@ from config import Settings
 from deps import Clock, Deps, Describer, Runtime, WallClock, get_deps
 from detector import DetectFn, Detector, FallbackDetector, YoloDetector, ZeroShotDetector
 from frame_routes import router as frame_router
+from store import FrameLog
 
 __all__ = ["Deps", "app", "create_app", "get_deps"]
 
@@ -56,7 +58,12 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="Iris server", lifespan=_lifespan)
     app.state.deps = Deps(detector, describer, clock, wall_clock, settings)
-    app.state.runtime = Runtime(device=detector.device, tuning=settings.tuning, name=detector.name)
+    app.state.runtime = Runtime(
+        device=detector.device,
+        frame_log=FrameLog(Path(settings.log_dir) / "frames.jsonl"),
+        tuning=settings.tuning,
+        name=detector.name,
+    )
     app.include_router(frame_router)
     return app
 

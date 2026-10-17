@@ -19,7 +19,7 @@ follow_imports = "skip"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = ["torch", "torch.*", "ultralytics", "ultralytics.*"]
+module = ["torch", "torch.*", "ultralytics", "ultralytics.*", "cv2", "cv2.*"]
 ignore_missing_imports = true
 follow_imports = "skip"
 
