@@ -138,12 +138,16 @@ def test_health_reports_the_commit_from_the_environment(monkeypatch: pytest.Monk
         # Nearest rank: n=7 gives ranks 4 and 7; n=10 gives ranks 5 and 10.
         ([10, 20, 30, 40, 50, 60, 70], 40, 70),
         ([10, 20, 30, 40, 50, 60, 70, 80, 90, 100], 50, 100),
+        # Even count: n=4 gives ranks 2 and 4 (the lower middle, not an average).
+        ([10, 20, 30, 41], 20, 41),
     ],
 )
 def test_health_percentiles_use_nearest_rank(costs: list[int], p50: int, p95: int) -> None:
     with _timed([(i * 400, cost) for i, cost in enumerate(costs)]) as (c, _):
         h = c.get("/health").json()
     assert (h["server_ms_p50"], h["server_ms_p95"]) == (p50, p95)
+    assert type(h["server_ms_p50"]) is int
+    assert type(h["server_ms_p95"]) is int
 
 
 def test_health_percentiles_cover_only_the_last_hundred_frames() -> None:
