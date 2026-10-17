@@ -4,7 +4,11 @@
 # On-box check: stop iris, send one keyed request (header and ?key=), then
 #   journalctl -u caddy | grep -i iris-key
 # must print nothing, and `journalctl -u caddy | grep "key="` must show no real key.
+# The admin API is a unix socket owned by caddy (mode 0600 by default), so the iris
+# process cannot reach it. `systemctl reload caddy` runs `caddy reload --config
+# /etc/caddy/Caddyfile`, which reads this admin address from the config.
 {
+	admin unix//run/caddy/admin.sock
 	log default {
 		format filter {
 			wrap console

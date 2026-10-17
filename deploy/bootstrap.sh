@@ -22,6 +22,7 @@ IRIS_REF="${IRIS_REF:-main}"
 PIP_VERSION=26.2.1
 TORCH_VERSION=2.14.1+cpu
 TORCHVISION_VERSION=0.29.1+cpu
+YOLO26S_URL=https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26s.pt
 YOLO26S_SHA256=646f8bc3fe0a656803d95c294f7852321748cb29d13466a1af8862e2db384a1b
 
 APP=/opt/iris
@@ -134,12 +135,15 @@ log "venv (CPU torch first)"
 log "stock weights in $MODELS"
 # Root-owned, so the service cannot rewrite its own weights. The service runs from $MODELS,
 # so the stock fallback finds this file and never downloads into some other cwd.
-if [ ! -f "$MODELS/yolo26s.pt" ]; then
-  (cd "$MODELS" && "$VENV/bin/python" -c "from ultralytics import YOLO; YOLO('yolo26s.pt')")
-fi
-if ! echo "$YOLO26S_SHA256  $MODELS/yolo26s.pt" | sha256sum -c --quiet -; then
-  rm -f "$MODELS/yolo26s.pt"
-  die "yolo26s.pt failed its sha256 check and was removed; re-run to download again"
+# Never construct YOLO(...) here: that torch-loads the file as root before it is verified.
+sha_ok() { echo "$YOLO26S_SHA256  $1" | sha256sum -c --quiet - 2>/dev/null; }
+if [ ! -f "$MODELS/yolo26s.pt" ] || ! sha_ok "$MODELS/yolo26s.pt"; then
+  tmp="$(mktemp "$MODELS/.yolo26s.XXXXXX")"
+  if ! curl -fsSL "$YOLO26S_URL" -o "$tmp" || ! sha_ok "$tmp"; then
+    rm -f "$tmp"
+    die "yolo26s.pt download failed its sha256 check and was deleted"
+  fi
+  mv -f "$tmp" "$MODELS/yolo26s.pt"
 fi
 chown -R root:root "$MODELS"
 chmod 755 "$MODELS"
@@ -183,11 +187,18 @@ sed "s|__HOST__|$HOST|" "$DEPLOY_DIR/Caddyfile" >/etc/caddy/Caddyfile
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
 log "services"
+# Caddy's admin API listens on /run/caddy/admin.sock (see the Caddyfile), so the iris process
+# cannot reach localhost:2019. The socket needs its directory; the packaged unit's
+# `caddy reload --config /etc/caddy/Caddyfile` reads the admin address from that config.
+install -d -m 755 /etc/systemd/system/caddy.service.d
+printf '[Service]\nRuntimeDirectory=caddy\nRuntimeDirectoryMode=0750\n' \
+  >/etc/systemd/system/caddy.service.d/iris-admin-socket.conf
 install -m 644 "$DEPLOY_DIR/iris.service" /etc/systemd/system/iris.service
 systemctl daemon-reload
 systemctl enable iris caddy
 systemctl restart iris
-systemctl reload-or-restart caddy
+# Restart, not reload: the drop-in and the admin address only take effect on a restart.
+systemctl restart caddy
 
 log "waiting up to 60 s for /health"
 for _ in $(seq 1 60); do
