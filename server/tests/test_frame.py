@@ -49,7 +49,14 @@ def test_person_detection_is_returned_with_side_and_extra_fields() -> None:
     assert reply["alert"] is None
     assert reply["frame_id"] == 1
     assert reply["server_ms"] == 10  # FakeClock advances 10 ms per call
-    assert set(reply) <= {"detections", "alert", "frame_id", "server_ms", "description"}
+    assert set(reply) <= {
+        "detections",
+        "alert",
+        "frame_id",
+        "server_ms",
+        "description",
+        "description_id",
+    }
 
 
 def test_reply_with_detections_has_the_contract_shapes() -> None:
@@ -57,7 +64,7 @@ def test_reply_with_detections_has_the_contract_shapes() -> None:
     with _client(FakeDetector([[det(conf=0.38, cx=0.9)]])) as c:
         reply = _post(c)
     assert {"detections", "alert"} <= set(reply)
-    assert set(reply) <= set(fixture) | {"frame_id", "server_ms"}
+    assert set(reply) <= set(fixture) | {"frame_id", "server_ms", "description", "description_id"}
     for got, want in zip(reply["detections"], fixture["detections"], strict=False):
         assert got.keys() == want.keys()
         assert {k: type(v) for k, v in got.items()} == {k: type(v) for k, v in want.items()}

@@ -2,7 +2,7 @@
 
 from typing import Literal, Self
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from domain import Tuning
@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     cooldown_s: float = Field(default=4.0, ge=0, allow_inf_nan=False)
     same_side_repeat_s: float = Field(default=10.0, ge=0, allow_inf_nan=False)
     window_max_age_s: float = Field(default=2.0, ge=0, allow_inf_nan=False)
+
+    # Spoken descriptions (ticket 08). An empty key turns them off at startup.
+    describe: Literal["on", "off"] = "on"
+    gemini_api_key: SecretStr = SecretStr("")  # SecretStr keeps it out of repr and logs
+    gemini_model: str = "gemini-3.8-flash"
+    gemini_timeout_s: float = Field(default=6.0, gt=0, allow_inf_nan=False)
+    describe_cooldown_s: float = Field(default=15.0, ge=0, allow_inf_nan=False)
+    describe_max_age_s: float = Field(default=5.0, gt=0, allow_inf_nan=False)
+    gemini_prompt_file: str = ""  # empty: prompts/describe.txt beside the code
 
     @field_validator("alert_labels")
     @classmethod

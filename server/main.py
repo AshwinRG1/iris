@@ -14,9 +14,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from config import Settings
-from deps import Clock, Deps, Describer, Runtime, WallClock, get_deps
+from deps import Clock, Deps, Runtime, WallClock, get_deps
 from detector import DetectFn, Detector, FallbackDetector, YoloDetector, ZeroShotDetector
 from frame_routes import router as frame_router
+from gemini import Describer, GeminiDescriber
 from limits import BodyLimitMiddleware
 from live_routes import router as live_router
 from store import JsonlLog
@@ -56,11 +57,18 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # A load already running in its thread can't be interrupted; shutdown doesn't wait for it.
     await asyncio.gather(task, return_exceptions=True)
     runtime.slot.shutdown(wait=False, cancel_futures=True)
+    pending = list(runtime.describe_tasks)
+    for t in pending:
+        t.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+    aclose = getattr(deps.describer, "aclose", None)
+    if aclose is not None:
+        await aclose()
 
 
 def create_app(
     detector: Detector,
-    describer: Describer,
+    describer: Describer | None,  # None: descriptions are off
     clock: Clock,
     wall_clock: WallClock,
     settings: Settings,
@@ -100,9 +108,36 @@ class _SystemWallClock:
         return datetime.now(UTC)
 
 
-class _NoDescriber:
-    async def describe(self, jpeg: bytes) -> str:
-        return ""
+DEFAULT_PROMPT = Path(__file__).resolve().parent / "prompts" / "describe.txt"
+
+
+def build_describer(s: Settings) -> Describer | None:
+    """The Gemini adapter, or None with one log line naming why. Never raises or logs the key."""
+    if s.describe == "off":
+        log.info("DESCRIBE=off; descriptions are off")
+        return None
+    key = s.gemini_api_key.get_secret_value()
+    if not key:
+        log.warning("GEMINI_API_KEY is not set; descriptions are off")
+        return None
+    if not s.gemini_model.strip():
+        log.warning("GEMINI_MODEL is empty; descriptions are off")
+        return None
+    path = Path(s.gemini_prompt_file) if s.gemini_prompt_file else DEFAULT_PROMPT
+    try:
+        prompt = path.read_text(encoding="utf-8")
+        if not prompt.strip():
+            raise ValueError("empty")
+    except (OSError, ValueError) as e:  # UnicodeDecodeError is a ValueError
+        log.warning(
+            "GEMINI_PROMPT_FILE %s is unusable (%s); descriptions are off", path, type(e).__name__
+        )
+        return None
+    try:
+        return GeminiDescriber(key, s.gemini_model.strip(), prompt)
+    except Exception as e:
+        log.warning("Gemini client could not be built (%s); descriptions are off", type(e).__name__)
+        return None
 
 
 def _import_zeroshot() -> DetectFn:
@@ -124,7 +159,9 @@ def build_detector(
 
 def _build_app() -> FastAPI:
     s = Settings()
-    return create_app(build_detector(s), _NoDescriber(), _MonotonicClock(), _SystemWallClock(), s)
+    return create_app(
+        build_detector(s), build_describer(s), _MonotonicClock(), _SystemWallClock(), s
+    )
 
 
 app = _build_app()

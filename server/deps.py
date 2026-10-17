@@ -1,5 +1,6 @@
 """Shared dependencies and runtime state. Mutated only on the event loop."""
 
+import asyncio
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -9,14 +10,11 @@ from typing import Protocol
 from fastapi import Request
 
 from config import Settings
+from describe_policy import DescribeState
 from detector import NO_MODEL, Detector, ModelInfo
 from domain import PolicyState, Tuning
+from gemini import Describer
 from store import EventRing, JsonlLog, LatencyStats, Snapshot
-
-
-# Placeholder: moves to the describer module in a later ticket.
-class Describer(Protocol):
-    async def describe(self, jpeg: bytes) -> str: ...
 
 
 class Clock(Protocol):
@@ -30,7 +28,7 @@ class WallClock(Protocol):
 @dataclass(frozen=True)
 class Deps:
     detector: Detector
-    describer: Describer
+    describer: Describer | None  # None: descriptions are off
     clock: Clock
     wall_clock: WallClock
     settings: Settings
@@ -54,6 +52,9 @@ class Runtime:
     # Changes on every restart, so a page can tell its event ids are from an old run.
     boot_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     events: EventRing = field(default_factory=EventRing)
+    describe_state: DescribeState = field(default_factory=DescribeState)
+    # Strong references to running description tasks; non-empty means a call is in flight.
+    describe_tasks: set[asyncio.Task[None]] = field(default_factory=set)
     # The single inference slot: one worker thread, so the model is never used concurrently.
     slot: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor(max_workers=1))
 
