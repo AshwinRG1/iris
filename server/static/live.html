@@ -59,7 +59,9 @@ let lastEventId = 0;
 let bootId = null;
 let drawnFrameId = 0;
 let lastBitmap = null; // the last image, kept so a stale frame can be shown without boxes
+let lastBitmapFrameId = 0;
 let drawnStale = false;
+let frameBootId = null; // the server instance whose frame ids drawnFrameId refers to
 
 // The key goes in a header, never in a URL, and never to /health.
 function get(path) {
@@ -102,7 +104,18 @@ async function pollFrame() {
     const latest = await getJson("/latest");
     setText("age", latest.age_ms === null ? null : (latest.age_ms / 1000).toFixed(1));
     setText("stale", latest.stale ? "stale (no new frames)" : "");
-    if (latest.stale && lastBitmap && !drawnStale) draw(lastBitmap, latest);
+    if (latest.boot_id !== frameBootId) {
+      // The server restarted, so its frame ids started over: forget what was drawn.
+      frameBootId = latest.boot_id;
+      drawnFrameId = 0;
+      drawnStale = false;
+      if (lastBitmap) lastBitmap.close();
+      lastBitmap = null;
+      lastBitmapFrameId = 0;
+    }
+    if (latest.stale && !drawnStale && lastBitmap && lastBitmapFrameId === latest.frame_id) {
+      draw(lastBitmap, latest); // the kept image is this frame's: show it without boxes
+    }
     const t = latest.tuning;
     setText("tuning", "alert>=" + t.conf_alert + " " + t.needed + "/" + t.window +
       " cooldown " + t.cooldown_ms / 1000 + "s repeat " + t.same_side_repeat_ms / 1000 + "s");
@@ -111,9 +124,11 @@ async function pollFrame() {
       // Draw only an image that is this /latest's frame; otherwise the next poll retries.
       if (r.ok && r.headers.get("X-Frame-Id") === String(latest.frame_id)) {
         const bitmap = await createImageBitmap(await r.blob(), { imageOrientation: "none" });
-        draw(bitmap, latest);
+        // lastBitmap owns the bitmap before drawing, so a failed draw cannot leak it.
         if (lastBitmap) lastBitmap.close();
         lastBitmap = bitmap;
+        lastBitmapFrameId = latest.frame_id;
+        draw(bitmap, latest);
         drawnFrameId = latest.frame_id;
       }
     }

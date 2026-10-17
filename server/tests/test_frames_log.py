@@ -205,6 +205,30 @@ def test_health_percentiles_age_out_after_sixty_seconds_and_return_with_a_new_fr
     assert (back["server_ms_p50"], back["server_ms_p95"]) == (5, 5)
 
 
+def test_health_percentiles_exclude_a_frame_stamped_after_now() -> None:
+    with _timed([(1000, 10), (5000, 999)]) as (c, clock):
+        clock.t = 2000
+        h = c.get("/health").json()
+    assert (h["server_ms_p50"], h["server_ms_p95"]) == (10, 10)
+
+
+def test_health_percentiles_are_ints_for_out_of_order_records() -> None:
+    with _timed([(3000, 30), (1000, 10), (2000, 20), (4000, 40)]) as (c, clock):
+        clock.t = 5000
+        h = c.get("/health").json()
+    assert (h["server_ms_p50"], h["server_ms_p95"]) == (20, 40)
+    assert type(h["server_ms_p50"]) is int
+    assert type(h["server_ms_p95"]) is int
+
+
+def test_health_percentiles_with_101_frames_in_the_window_count_only_the_last_100() -> None:
+    # One slow frame first, then 100 fast ones, all within 60 s: the slow one is capped out.
+    with _timed([(0, 1000)] + [(1000 + i * 100, 10) for i in range(100)]) as (c, clock):
+        clock.t = 20_000
+        h = c.get("/health").json()
+    assert (h["server_ms_p50"], h["server_ms_p95"]) == (10, 10)
+
+
 def test_health_percentiles_drop_only_the_frames_outside_the_window() -> None:
     with _timed([(0, 900), (50_000, 10), (55_000, 20)]) as (c, clock):
         clock.t = 65_000

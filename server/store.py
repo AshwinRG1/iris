@@ -31,7 +31,12 @@ def nearest_rank[T: float](values: list[T], q: float) -> T | None:
 
 @dataclass
 class LatencyStats:
-    """The last 100 frames: when each arrived (ms, monotonic) and its server ms."""
+    """The last 100 frames: when each arrived (ms, monotonic) and its server ms.
+
+    fps and the percentiles also look only at a window ending now, so the percentiles cover
+    the last 100 frames that arrived within 60 s: at 2.5 fps the cap is the tighter limit
+    after about 40 s, and an idle server's percentiles return to None.
+    """
 
     _frames: deque[tuple[int, int]] = field(default_factory=lambda: deque(maxlen=_KEEP))
 
@@ -96,7 +101,7 @@ class Snapshot:
     """The last frame as the live view shows it. Replaced whole, never edited."""
 
     frame_id: int
-    t_ms: int
+    published_ms: int  # when the result was published, not when the frame arrived
     at: datetime
     jpeg: bytes
     detections: tuple[Detection, ...]

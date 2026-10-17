@@ -73,6 +73,7 @@ class Latest(BaseModel):
     at: datetime | None
     age_ms: int | None
     stale: bool = False
+    boot_id: str
     detections: list[LatestDetection]
     tuning: Tuning
 
@@ -94,14 +95,22 @@ async def latest(
 ) -> Latest:
     snap = runtime.latest  # an immutable snapshot, replaced whole on the loop
     if snap is None:
-        return Latest(frame_id=0, at=None, age_ms=None, detections=[], tuning=runtime.tuning)
-    age_ms = max(0, deps.clock.now_ms() - snap.t_ms)
+        return Latest(
+            frame_id=0,
+            at=None,
+            age_ms=None,
+            boot_id=runtime.boot_id,
+            detections=[],
+            tuning=runtime.tuning,
+        )
+    age_ms = max(0, deps.clock.now_ms() - snap.published_ms)
     stale = age_ms > STALE_MS
     return Latest(
         frame_id=snap.frame_id,
         at=snap.at,
         age_ms=age_ms,
         stale=stale,
+        boot_id=runtime.boot_id,
         detections=[]
         if stale
         else [

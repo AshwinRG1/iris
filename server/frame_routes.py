@@ -118,7 +118,7 @@ async def frame(
     )
     runtime.stats.record(started, reply.server_ms)
     at = deps.wall_clock.now()
-    runtime.latest = Snapshot(runtime.last_frame_id, started, at, jpeg, tuple(kept))
+    runtime.latest = Snapshot(runtime.last_frame_id, deps.clock.now_ms(), at, jpeg, tuple(kept))
     runtime.frame_log.append({"at": at.isoformat(), **reply.model_dump()})
     if alert is not None:
         event = runtime.events.add(alert.t_ms, at, alert.hit.side, alert.hit.conf)
