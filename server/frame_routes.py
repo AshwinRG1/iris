@@ -71,7 +71,7 @@ async def frame(
     except BadImage as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     labels = deps.settings.alert_label_set
-    kept = [d for d in found if d.label in labels and d.conf >= deps.settings.conf_detect]
+    kept = [d for d in found if d.label.lower() in labels and d.conf >= deps.settings.conf_detect]
     runtime.policy, alert = decide(runtime.policy, kept, started, runtime.tuning)
     runtime.last_frame_id += 1
     reply = FrameReply(
@@ -91,6 +91,10 @@ class Health(BaseModel):
     device: str
     load_error: str | None
     auth: Literal["on", "off"]
+    model_file: str | None
+    model_sha256: str | None
+    class_names: list[str] | None
+    fallback: str | None
     commit: str | None
     fps: float
     server_ms_p50: int | None
@@ -102,12 +106,17 @@ async def health(
     deps: Annotated[Deps, Depends(get_deps)],
     runtime: Annotated[Runtime, Depends(get_runtime)],
 ) -> Health:
+    info = runtime.model_info
     return Health(
         ready=runtime.ready,
-        detector=deps.detector.name,
+        detector=runtime.name,
         device=runtime.device,
         load_error=runtime.load_error,
         auth="on" if deps.settings.iris_api_key else "off",
+        model_file=info.file,
+        model_sha256=info.sha256,
+        class_names=None if info.class_names is None else list(info.class_names),
+        fallback=info.fallback,
         commit=deps.settings.commit,
         fps=runtime.stats.fps(deps.clock.now_ms()),
         server_ms_p50=runtime.stats.server_ms_percentile(0.50),

@@ -8,7 +8,7 @@ from typing import Protocol
 from fastapi import Request
 
 from config import Settings
-from detector import Detector
+from detector import NO_MODEL, Detector, ModelInfo
 from domain import PolicyState, Tuning
 from store import FrameLog, LatencyStats
 
@@ -40,6 +40,9 @@ class Runtime:
     device: str
     frame_log: FrameLog
     tuning: Tuning
+    # Set on the loop from load()'s result. /health reads these, never the detector.
+    name: str = ""
+    model_info: ModelInfo = NO_MODEL
     ready: bool = False
     load_error: str | None = None
     last_frame_id: int = 0

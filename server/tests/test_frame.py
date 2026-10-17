@@ -1,16 +1,24 @@
 import json
 import threading
-import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import FakeClock, FakeDescriber, FakeDetector, FakeWallClock, det, jpeg_bytes
+from conftest import (
+    FakeClock,
+    FakeDescriber,
+    FakeDetector,
+    FakeWallClock,
+    det,
+    jpeg_bytes,
+    wait_for,
+)
 from fastapi.testclient import TestClient
 from PIL import Image
 
 from config import Settings
+from detector import Loaded
 from domain import Detection
 from main import create_app
 
@@ -123,9 +131,9 @@ class SlowLoad(FakeDetector):
         super().__init__()
         self.release = threading.Event()
 
-    def load(self) -> str:
+    def load(self) -> Loaded:
         self.release.wait(5)
-        return "cpu"
+        return super().load()
 
 
 @pytest.fixture
@@ -142,10 +150,7 @@ def test_not_ready_gives_503_then_ready(slow: SlowLoad) -> None:
         r = c.post("/frame", files={"file": ("f.jpg", jpeg_bytes(), "image/jpeg")})
         assert r.status_code == 503
         slow.release.set()
-        for _ in range(100):
-            if c.get("/health").json()["ready"]:
-                break
-            time.sleep(0.05)
+        wait_for(lambda: c.get("/health").json()["ready"])
         health = c.get("/health").json()
         assert health["ready"] is True
         assert health["detector"] == "fake"
@@ -154,16 +159,13 @@ def test_not_ready_gives_503_then_ready(slow: SlowLoad) -> None:
 
 
 class BrokenLoad(FakeDetector):
-    def load(self) -> str:
+    def load(self) -> Loaded:
         raise RuntimeError("weights missing")
 
 
 def test_load_failure_is_visible_and_frame_stays_503() -> None:
     with _client(BrokenLoad()) as c:
-        for _ in range(100):
-            if c.get("/health").json()["load_error"]:
-                break
-            time.sleep(0.05)
+        wait_for(lambda: c.get("/health").json()["load_error"])
         health = c.get("/health").json()
         assert health["ready"] is False
         assert health["load_error"] == "RuntimeError"

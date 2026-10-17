@@ -1,8 +1,8 @@
 """Settings, parsed from the environment once at startup."""
 
-from typing import Self
+from typing import Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from domain import Tuning
@@ -11,6 +11,7 @@ from domain import Tuning
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(frozen=True, populate_by_name=True)
 
+    detector: Literal["yolo", "zeroshot"] = "yolo"
     conf_detect: float = 0.25
     alert_labels: str = "person"  # comma-separated
     model_path: str = "yolo26s.pt"
@@ -29,6 +30,14 @@ class Settings(BaseSettings):
     cooldown_s: float = Field(default=4.0, ge=0, allow_inf_nan=False)
     same_side_repeat_s: float = Field(default=10.0, ge=0, allow_inf_nan=False)
     window_max_age_s: float = Field(default=2.0, ge=0, allow_inf_nan=False)
+
+    @field_validator("alert_labels")
+    @classmethod
+    def _normalize_labels(cls, v: str) -> str:
+        labels = sorted({s.strip().lower() for s in v.split(",") if s.strip()})
+        if not labels:
+            raise ValueError("ALERT_LABELS must name at least one label")
+        return ",".join(labels)
 
     @model_validator(mode="after")
     def _check_tuning(self) -> Self:
