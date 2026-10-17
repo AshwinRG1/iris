@@ -1,0 +1,10 @@
+{
+  "detections": [
+    {"label": "limb", "conf": 0.38, "side": "right"}
+  ],
+  "alert": "possible person, right",
+  "description": "One person partly covered by debris, arm visible, near a fallen beam.",
+  "frame_id": 1842,
+  "server_ms": 96,
+  "future_field": {"ignored": true}
+}
