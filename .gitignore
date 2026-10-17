@@ -5,7 +5,6 @@ runs/
 *.pt
 .DS_Store
 **/.DS_Store
-Code snippet
 # Xcode user-specific state & local window/signing state
 app/**/xcuserdata/
 app/**/UserInterfaceState.xcuserstate
