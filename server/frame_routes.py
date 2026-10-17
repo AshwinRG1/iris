@@ -13,6 +13,7 @@ from auth import require_key_header
 from deps import Deps, Runtime, get_deps, get_runtime
 from detector import Detector
 from domain import Detection, Side
+from store import Snapshot, event_json
 
 router = APIRouter()
 
@@ -76,12 +77,17 @@ async def frame(
     runtime.last_frame_id += 1
     reply = FrameReply(
         detections=[DetectionOut(label=d.label, conf=d.conf, side=d.side) for d in kept],
-        alert=alert,
+        alert=alert.text if alert else None,
         frame_id=runtime.last_frame_id,
         server_ms=deps.clock.now_ms() - started,
     )
     runtime.stats.record(started, reply.server_ms)
-    runtime.frame_log.append({"at": deps.wall_clock.now().isoformat(), **reply.model_dump()})
+    at = deps.wall_clock.now()
+    runtime.latest = Snapshot(runtime.last_frame_id, started, at, jpeg, tuple(kept))
+    runtime.frame_log.append({"at": at.isoformat(), **reply.model_dump()})
+    if alert is not None:
+        event = runtime.events.add(alert.t_ms, at, alert.hit.side, alert.hit.conf)
+        runtime.event_log.append(event_json(event))
     return reply
 
 
