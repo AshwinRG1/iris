@@ -33,14 +33,14 @@ WEIGHTS_DIR = Path("server/weights")
 
 def train_run(data: str, run_name: str) -> Path:
     model = YOLO(BASE_MODEL)
-    results = model.train(
+    model.train(
         data=data,
         epochs=EPOCHS,
         imgsz=IMGSZ,
         patience=PATIENCE,
         name=run_name,
     )
-    best = Path(results.save_dir) / "weights" / "best.pt"
+    best = Path(model.trainer.save_dir) / "weights" / "best.pt"
     WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
     dst = WEIGHTS_DIR / f"best_{run_name}.pt"
     shutil.copy2(best, dst)
