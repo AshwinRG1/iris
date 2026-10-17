@@ -110,3 +110,7 @@ The app uses Apple's `URLSession` for frame uploads and `AVSpeechSynthesizer` fo
 | Git and individual GitHub credentials | Repository collaboration |
 
 Keep API keys and other credentials out of Git. The plan specifies environment variables and a local `.env` file for secrets; any automatic `.env` loading must be configured by the server implementation.
+
+## OWLv2 baseline setup
+
+Install `training/requirements-zeroshot.txt` for the tested evaluator environment (`transformers==4.57.1` plus SciPy and the pinned Ultralytics evaluator). See [the OWLv2 guide](training/OWLV2.md) for full evaluation and server activation. The standalone evaluator supports Python 3.11; the full server requires Python 3.12.

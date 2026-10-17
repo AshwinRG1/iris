@@ -25,8 +25,9 @@
 #   IRIS_HEALTH_TIMEOUT_S  seconds to wait for ready (default 60).
 #   IRIS_SYSTEMCTL         systemctl command (default systemctl).
 #   IRIS_GIT_SSH           git SSH command; default is the deploy key from bootstrap.sh
-#                          (IRIS_DEPLOY_KEY, /root/.ssh/iris_deploy). An inherited
-#                          GIT_SSH_COMMAND is ignored.
+#                          (IRIS_DEPLOY_KEY, /root/.ssh/iris_deploy). It and the
+#                          deploy key only apply when origin is an SSH URL; an HTTPS
+#                          clone ignores them. An inherited GIT_SSH_COMMAND is ignored.
 #   IRIS_LOCK_FILE         flock file so two updates cannot overlap (default /run/iris-update.lock).
 #   IRIS_UPDATE_LOG        where output goes once the terminal is gone
 #                          (default /var/log/iris-update.log).

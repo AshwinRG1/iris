@@ -1,0 +1,46 @@
+{
+  "model": "google/owlv2-base-patch16-ensemble",
+  "revision": "cfd3195ba4ea9592eec887ded089f4c08eff231d",
+  "prompts": [
+    "person",
+    "person lying down",
+    "person in water",
+    "partially visible person"
+  ],
+  "body_part_prompts": false,
+  "imgsz": 640,
+  "cpu_threads": 8,
+  "positional_embedding_interpolation": true,
+  "transformers_version": "4.57.1",
+  "audit": {
+    "images": 634,
+    "positive_images": 565,
+    "background_images": 69,
+    "boxes": 1819
+  },
+  "complete_split": true,
+  "results": {
+    "timestamp_utc": "2026-10-17T17:47:02.308915+00:00",
+    "model": "google/owlv2-base-patch16-ensemble",
+    "data": "C:\\Users\\madhs\\iris\\data\\test\\data\\data.yaml",
+    "split": "test",
+    "classes": "person",
+    "images": 634,
+    "precision": 0.3453256633982961,
+    "recall": 0.36888400219901046,
+    "map50": 0.23243628706879568,
+    "map50_95": 0.06515762537571262,
+    "inference_ms_per_image": 5585.588554100956,
+    "preprocess_ms_per_image": 47.25736703456318,
+    "postprocess_ms_per_image": 6.323473343971054,
+    "device": "cpu",
+    "imgsz": 640,
+    "batch": 1,
+    "conf": 0.001,
+    "iou": 0.7,
+    "ultralytics_version": "8.4.178",
+    "artifacts": "C:\\Users\\madhs\\iris\\runs\\zeroshot\\20261017T164706180169Z"
+  },
+  "torch_version": "2.14.1",
+  "scipy_version": "1.17.1"
+}

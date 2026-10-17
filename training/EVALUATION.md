@@ -56,7 +56,7 @@ C's current merge script creates train and val splits only. You can evaluate the
 python training/evaluate.py --data data/merged/data.yaml --models yolo26s.pt --split val --output docs/validation_results.csv
 ```
 
-These are validation results, not independent test results. The stock checkpoint downloads on first use. All other checkpoint paths must already exist.
+These are validation results, not independent test results. Stock `yolo26s.pt` and `yolo11s.pt` checkpoints download on first use. All other checkpoint paths must already exist.
 
 ## Final comparison
 
@@ -82,6 +82,10 @@ Timing columns are Ultralytics mean preprocessing, inference, and postprocessing
 
 ## Remaining evaluation work
 
-This script evaluates YOLO bounding-box checkpoints only. OWLv2 needs a separate prediction adapter and consistent class/box semantics before a fair mAP comparison. Independent video clips need frame-level ground truth before detection rate and false-positive metrics can be reported; raw detection frequency is not accuracy.
+This script evaluates YOLO bounding-box checkpoints only. OWLv2 is implemented in `server/zeroshot.py` and scored by `training/evaluate_zeroshot.py`; see [OWLV2.md](OWLV2.md) for the fixed whole-person prompts and matching metric settings. Independent video clips need frame-level ground truth before detection rate and false-positive metrics can be reported; raw detection frequency is not accuracy.
 
 Ultralytics validation API reference: https://docs.ultralytics.com/modes/val/
+
+## Supplied checkpoints
+
+The supplied plain/storm checkpoints were trained from YOLO11s. Compare them with stock `yolo11s.pt` as well as the original YOLO26s baseline. See [the recorded comparison](../docs/evaluation_results.md) for results and limitations.

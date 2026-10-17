@@ -55,3 +55,5 @@ jobs:
           shellcheck "${files[@]}"
       - name: test deploy/update.sh
         run: bash deploy/tests/test_update.sh
+      - name: test deploy/bootstrap.sh ufw step
+        run: bash deploy/tests/test_bootstrap_ufw.sh

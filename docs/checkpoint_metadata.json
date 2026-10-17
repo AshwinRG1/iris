@@ -1,0 +1,54 @@
+[
+  {
+    "file": "server/weights/best_plain.pt",
+    "sha256": "79f86229223766484a42687eaf8fbca1b7b0701930e1fe3c0be9196d41b95bcf",
+    "class_names": {
+      "0": "person"
+    },
+    "parameters": 9428179,
+    "training_arguments": {
+      "model": "yolo11s.pt",
+      "data": "/content/data/merged/data.yaml",
+      "epochs": 50,
+      "imgsz": 640,
+      "seed": 0,
+      "single_cls": false
+    },
+    "saved_validation_metrics": {
+      "metrics/precision(B)": 0.20153,
+      "metrics/recall(B)": 0.15337,
+      "metrics/mAP50(B)": 0.11546,
+      "metrics/mAP50-95(B)": 0.04689,
+      "val/box_loss": 0.43867,
+      "val/cls_loss": 1.0232,
+      "val/dfl_loss": 0.38485,
+      "fitness": 0.04689
+    }
+  },
+  {
+    "file": "server/weights/best_storm.pt",
+    "sha256": "bb1968b10462ff0a4913a36933cecb98cd6e6372ba5cb7f235cd133f32ed59fd",
+    "class_names": {
+      "0": "person"
+    },
+    "parameters": 9428179,
+    "training_arguments": {
+      "model": "yolo11s.pt",
+      "data": "/content/data/merged_storm/data.yaml",
+      "epochs": 50,
+      "imgsz": 640,
+      "seed": 0,
+      "single_cls": false
+    },
+    "saved_validation_metrics": {
+      "metrics/precision(B)": 0.47171,
+      "metrics/recall(B)": 0.18405,
+      "metrics/mAP50(B)": 0.18806,
+      "metrics/mAP50-95(B)": 0.08146,
+      "val/box_loss": 0.40914,
+      "val/cls_loss": 0.6879,
+      "val/dfl_loss": 0.32828,
+      "fitness": 0.08146
+    }
+  }
+]

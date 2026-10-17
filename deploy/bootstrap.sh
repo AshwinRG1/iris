@@ -2,11 +2,11 @@
 # Provision a fresh box for the Iris server. Run once as root; safe to re-run.
 # The image must be Ubuntu 24.04 LTS or newer (python3 3.12+, like CI).
 #
-#   IRIS_REPO_URL=git@github.com:<org>/iris.git bash bootstrap.sh
+#   IRIS_REPO_URL=https://github.com/AshwinRG1/iris.git bash bootstrap.sh
 #
 # Environment:
-#   IRIS_REPO_URL    required. SSH URL of the repo (private, read-only deploy key).
-#   IRIS_DEPLOY_KEY  path to the deploy private key (default /root/.ssh/iris_deploy).
+#   IRIS_REPO_URL    required. HTTPS URL of the repo (public), or an SSH URL with IRIS_DEPLOY_KEY if the repo is ever made private.
+#   IRIS_DEPLOY_KEY  path to the deploy private key, only used with an SSH IRIS_REPO_URL (default /root/.ssh/iris_deploy).
 #   IRIS_REF         branch, tag or commit to deploy (default main).
 #   IRIS_PUBLIC_IP   skip public IP detection.
 #
@@ -14,7 +14,7 @@
 # Set it, re-run.
 set -euo pipefail
 
-: "${IRIS_REPO_URL:?set IRIS_REPO_URL to the repo SSH URL}"
+: "${IRIS_REPO_URL:?set IRIS_REPO_URL to the repo URL}"
 IRIS_DEPLOY_KEY="${IRIS_DEPLOY_KEY:-/root/.ssh/iris_deploy}"
 IRIS_REF="${IRIS_REF:-main}"
 
@@ -64,6 +64,19 @@ elif h.get("auth") != "on":
 else:
     print("ready")
 '
+}
+
+# A fresh Vultr Ubuntu image has ufw active with only 22 open. Open 80 (ACME, HTTP->HTTPS) and
+# 443 for Caddy. `ufw allow` skips a rule that already exists, so re-runs change nothing.
+# Without ufw, or with it inactive, do nothing. Never open 8000: uvicorn is localhost-only.
+open_web_ports() {
+  local status
+  command -v ufw >/dev/null 2>&1 || return 0
+  status="$(ufw status 2>/dev/null || true)"
+  grep -qx 'Status: active' <<<"$status" || return 0
+  log "ufw active: allowing 80/tcp and 443/tcp"
+  ufw allow 80/tcp
+  ufw allow 443/tcp
 }
 
 [ "$(id -u)" -eq 0 ] || die "run as root"
@@ -185,6 +198,7 @@ is_ipv4 "$IP" || die "bad public IP: '$IP'"
 HOST="${IP//./-}.nip.io"
 sed "s|__HOST__|$HOST|" "$DEPLOY_DIR/Caddyfile" >/etc/caddy/Caddyfile
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+open_web_ports
 
 log "services"
 # Caddy's admin API listens on /run/caddy/admin.sock (see the Caddyfile), so the iris process
