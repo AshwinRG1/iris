@@ -1,5 +1,8 @@
 agents.md
 data/
+merged/
+runs/
+*.pt
 .DS_Store
 **/.DS_Store
 Code snippet
