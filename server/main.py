@@ -8,7 +8,9 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from config import Settings
 from deps import Clock, Deps, Describer, Runtime, WallClock, get_deps
@@ -73,10 +75,16 @@ def create_app(
     )
     if not settings.iris_api_key:
         log.warning("IRIS_API_KEY is not set; authentication is off")
+    app.add_exception_handler(RequestValidationError, _short_422)
     app.add_middleware(BodyLimitMiddleware, max_bytes=settings.max_upload_bytes)
     app.include_router(frame_router)
     app.include_router(live_router)
     return app
+
+
+async def _short_422(request: Request, exc: Exception) -> JSONResponse:
+    # FastAPI's default 422 copies the offending input back; ours is a fixed string.
+    return JSONResponse({"detail": "request has a missing or invalid field"}, status_code=422)
 
 
 class _MonotonicClock:

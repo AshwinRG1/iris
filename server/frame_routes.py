@@ -4,7 +4,7 @@ import asyncio
 import io
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request
 from PIL import Image
 from pydantic import BaseModel
 
@@ -13,6 +13,7 @@ from auth import require_key_header
 from deps import Deps, Runtime, get_deps, get_runtime
 from detector import Detector
 from domain import Detection, Side
+from form_part import MalformedForm, read_part
 from store import Snapshot, event_json
 
 router = APIRouter()
@@ -56,13 +57,17 @@ def _decode_and_detect(detector: Detector, jpeg: bytes) -> list[Detection]:
 
 @router.post("/frame", dependencies=[Depends(require_key_header)])
 async def frame(
-    file: UploadFile,
+    request: Request,
     deps: Annotated[Deps, Depends(get_deps)],
     runtime: Annotated[Runtime, Depends(get_runtime)],
 ) -> FrameReply:
     if not runtime.ready:
         raise HTTPException(status_code=503, detail="model not ready")
-    jpeg = await file.read()
+    try:
+        # The body streams through BodyLimitMiddleware, so this read is bounded.
+        jpeg = await read_part(request.headers.get("content-type", ""), request.stream(), "file")
+    except MalformedForm as e:
+        raise HTTPException(status_code=422, detail="request is missing the file part") from e
     # Arrival time (the body is in), not completion time: the policy orders frames by arrival.
     started = deps.clock.now_ms()
     try:
