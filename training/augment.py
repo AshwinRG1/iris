@@ -10,6 +10,7 @@ Usage:
 import argparse
 import random
 import shutil
+import yaml
 import cv2
 import numpy as np
 from pathlib import Path
@@ -104,7 +105,6 @@ def main():
         copy_split(src, dst, split)
 
     # copy data.yaml and patch the path
-    import yaml
     meta = yaml.safe_load((src / "data.yaml").read_text())
     meta["path"] = str(dst.resolve())
     with open(dst / "data.yaml", "w") as f:
