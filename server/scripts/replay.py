@@ -12,14 +12,22 @@ Needs OpenCV (`pip install -r requirements-ml.txt`). Run from server/; --url is 
     python -m scripts.replay clip.mp4 --url URL --expect sightings.json --preflight
         [--commit abc123]
 
+API key: if the server sets IRIS_API_KEY, export the same variable before running and every
+POST /frame carries it as X-Iris-Key (/health is unkeyed). There is deliberately no flag for
+it, so the key stays out of shell history and `ps`. The key is never printed. A 401 prints one
+line saying the key is missing or wrong, and the run goes on.
+
+    export IRIS_API_KEY=...   # same value as on the server
+
 Sightings file: a JSON list of {"start": seconds, "end": seconds}, in clip time.
 """
 
 import argparse
 import json
+import os
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -34,6 +42,8 @@ JPEG_QUALITY = 70
 START_WINDOW_S = 2.0  # a sighting needs an alert within this long of its start
 GRACE_S = 1.0  # an alert may trail the end of a sighting by this long
 EPS = 1e-6  # float slack when comparing clip times
+KEY_ENV = "IRIS_API_KEY"
+KEY_HEADER = "X-Iris-Key"
 
 
 @dataclass(frozen=True)
@@ -75,6 +85,12 @@ def check_sightings(alert_times: list[float], sightings: list[Sighting]) -> list
         if not any(s.start - EPS <= t <= s.end + GRACE_S + EPS for s in sightings)
     ]
     return problems
+
+
+def auth_headers(env: Mapping[str, str]) -> dict[str, str]:
+    """Headers for POST /frame: the key from IRIS_API_KEY, or none when unset or empty."""
+    key = env.get(KEY_ENV, "")
+    return {KEY_HEADER: key} if key else {}
 
 
 def check_health(health: dict[str, Any], commit_prefix: str | None) -> list[str]:
@@ -125,12 +141,13 @@ def _fmt(v: float | None) -> str:
     return "n/a" if v is None else f"{v:.0f}"
 
 
-def replay(client: httpx.Client, clip: Path) -> list[Alert]:
+def replay(client: httpx.Client, clip: Path, headers: Mapping[str, str]) -> list[Alert]:
     alerts: list[Alert] = []
     server_ms: list[float] = []
     rtt_ms: list[float] = []
     sent_at: list[float] = []
     errors = skipped = 0
+    warned_auth = False
     slot_s = 1 / SAMPLE_FPS
     start = time.perf_counter()
     for clip_s, jpeg in sample_frames(clip):
@@ -144,14 +161,21 @@ def replay(client: httpx.Client, clip: Path) -> list[Alert]:
         sent = time.perf_counter()
         sent_at.append(sent)
         try:
-            r = client.post("/frame", files={"file": ("frame.jpg", jpeg, "image/jpeg")})
+            r = client.post(
+                "/frame", files={"file": ("frame.jpg", jpeg, "image/jpeg")}, headers=headers
+            )
             r.raise_for_status()
             body = r.json()
             server_ms.append(body["server_ms"])
             alert = body["alert"]
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
             errors += 1
-            print(f"t={clip_s:6.2f}s  ERROR  {type(e).__name__}: {e}")
+            if isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 401:
+                if not warned_auth:
+                    warned_auth = True
+                    print(f"401 from /frame: {KEY_ENV} is missing or wrong (server wants a key)")
+            else:
+                print(f"t={clip_s:6.2f}s  ERROR  {type(e).__name__}: {e}")
             continue
         finally:
             rtt_ms.append((time.perf_counter() - sent) * 1000)
@@ -206,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
     with httpx.Client(base_url=args.url, timeout=30) as client:
         if args.preflight and not preflight_health(client, args.commit):
             return 1
-        alerts = replay(client, args.clip)
+        alerts = replay(client, args.clip, auth_headers(os.environ))
     if sightings is None:
         return 0
     problems = check_sightings([a.clip_s for a in alerts], sightings)

@@ -1,6 +1,6 @@
 import pytest
 
-from scripts.replay import Sighting, check_health, check_sightings, parse_sightings
+from scripts.replay import Sighting, auth_headers, check_health, check_sightings, parse_sightings
 
 S = Sighting(10.0, 15.0)
 
@@ -69,3 +69,12 @@ def test_health_commit_must_start_with_the_given_prefix() -> None:
     assert check_health(ok, "abc12") == []
     assert check_health(ok, "zzz")
     assert check_health({"ready": True, "detector": "d", "commit": None}, "abc12")
+
+
+def test_key_in_environment_becomes_the_iris_key_header() -> None:
+    assert auth_headers({"IRIS_API_KEY": "k" * 32}) == {"X-Iris-Key": "k" * 32}
+
+
+def test_unset_or_empty_key_sends_no_header() -> None:
+    assert auth_headers({}) == {}
+    assert auth_headers({"IRIS_API_KEY": ""}) == {}
