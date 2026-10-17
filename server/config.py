@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     log_dir: str = "logs"
     commit: str | None = Field(default=None, validation_alias="IRIS_COMMIT")
     device: str = ""  # empty: CUDA, then MPS, then CPU
+    iris_api_key: str = ""  # empty: no key checks anywhere
+    # Caps the whole request body, multipart framing included.
+    max_upload_bytes: int = Field(default=2_000_000, gt=0)
 
     # Alert policy tuning. Seconds in the environment, ms inside.
     conf_alert: float = 0.35

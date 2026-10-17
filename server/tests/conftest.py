@@ -12,6 +12,11 @@ from detector import NO_MODEL, Loaded
 from domain import Box, Detection
 
 
+@pytest.fixture(autouse=True)
+def _key_unset_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("IRIS_API_KEY", raising=False)
+
+
 def wait_for(condition: Callable[[], bool], timeout_s: float = 5.0) -> None:
     """Poll until `condition()` is true; fail the test after `timeout_s`."""
     deadline = time.monotonic() + timeout_s

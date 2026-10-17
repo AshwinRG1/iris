@@ -96,6 +96,10 @@ def test_failing_log_warns_once_and_frames_still_succeed(
     assert len(warnings) == 1
 
 
+def _log_failures(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if "frames log" in r.getMessage()]
+
+
 def test_failing_log_is_retried_after_thirty_seconds(
     log_dir: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -107,10 +111,10 @@ def test_failing_log_is_retried_after_thirty_seconds(
         _post(c)
         now[0] += 29
         _post(c)
-        assert len(caplog.records) == 1
+        assert len(_log_failures(caplog)) == 1
         now[0] += 2
         _post(c)
-    assert len(caplog.records) == 2
+    assert len(_log_failures(caplog)) == 2
 
 
 def test_health_before_any_frame_has_no_latency() -> None:

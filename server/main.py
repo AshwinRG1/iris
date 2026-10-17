@@ -14,6 +14,7 @@ from config import Settings
 from deps import Clock, Deps, Describer, Runtime, WallClock, get_deps
 from detector import DetectFn, Detector, FallbackDetector, YoloDetector, ZeroShotDetector
 from frame_routes import router as frame_router
+from limits import BodyLimitMiddleware
 from store import FrameLog
 
 __all__ = ["Deps", "app", "create_app", "get_deps"]
@@ -33,9 +34,13 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 runtime.slot, deps.detector.load
             )
         except Exception as e:
-            runtime.load_error = f"{type(e).__name__}: {e}"
+            # /health shows only the type; the message may carry paths and stays in the log.
+            runtime.load_error = type(e).__name__
             log.error(
-                "model failed to load; /frame stays 503: %s", runtime.load_error, exc_info=True
+                "model failed to load; /frame stays 503: %s: %s",
+                type(e).__name__,
+                e,
+                exc_info=True,
             )
             return
         runtime.device, runtime.name, runtime.model_info = loaded.device, loaded.name, loaded.info
@@ -64,6 +69,9 @@ def create_app(
         tuning=settings.tuning,
         name=detector.name,
     )
+    if not settings.iris_api_key:
+        log.warning("IRIS_API_KEY is not set; authentication is off")
+    app.add_middleware(BodyLimitMiddleware, max_bytes=settings.max_upload_bytes)
     app.include_router(frame_router)
     return app
 

@@ -168,6 +168,6 @@ def test_load_failure_is_visible_and_frame_stays_503() -> None:
         wait_for(lambda: c.get("/health").json()["load_error"])
         health = c.get("/health").json()
         assert health["ready"] is False
-        assert health["load_error"] == "RuntimeError: weights missing"
+        assert health["load_error"] == "RuntimeError"
         r = c.post("/frame", files={"file": ("f.jpg", jpeg_bytes(), "image/jpeg")})
         assert r.status_code == 503
