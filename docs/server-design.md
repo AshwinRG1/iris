@@ -129,7 +129,7 @@ These terms are candidates for `GLOSSARY.md`; `/grill-with-docs` should settle t
 - **Event**: the record of a fired alert: id, time, side, conf, frame and, later, a description.
 - **Description**: Gemini's one sentence about the frame that fired an event, covering every kept box, grouped by side. The app speaks it after the alert.
 - **Description id**: an increasing integer per description, so the app speaks each description once.
-- **Described scene**: the person count and set of sides of the last description. A scene that matches it isn't described again.
+- **Described scene**: the boxes (side, center, area) of the last attached description and when it was attached. It is forgotten when the frame stays empty for `DESCRIBE_EMPTY_RESET_S`. An alert's scene is new when it differs from the described scene by count, sides, a large move or resize, or age (section 8).
 - **Detector**: an adapter from an image to detections. YOLO is one, and D's zero-shot model is another.
 - **Describer**: an adapter from a frame with its boxes drawn on, plus a line listing each box's side and conf, to a description (Gemini).
 - **Tuning**: the alert policy parameters that can change at runtime.
@@ -249,7 +249,7 @@ sequenceDiagram
 4. **Side** comes from the box center x: left if below 1/3, right if above 2/3, otherwise ahead.
 5. **Alert policy** runs on the loop (section 7).
 6. **Store**: replace the latest-frame snapshot (raw JPEG bytes, detections, frame_id, `t_ms`, `at`), update the latency stats, and append one line to `logs/frames.jsonl`. If an alert fired, append an event to the ring buffer and to `logs/events.jsonl`.
-7. **Describe**: if an alert fired and a description is allowed (section 8: none in flight, describe cooldown over, scene changed), draw every kept box on the frame and start a background task. Hold a reference to the task in a set so it isn't garbage-collected. On success, write the description and a new `description_id` onto that event, unless the answer is stale. The event loop is still the only writer.
+7. **Describe**: if an alert fired and a description is allowed (section 8: none in flight, describe cooldown over, scene new), draw every kept box on the frame and start a background task. Hold a reference to the task in a set so it isn't garbage-collected. On success, write the description and a new `description_id` onto that event, unless the answer is stale or a newer alert has fired. Every frame also updates the empty-frame timer that can forget the described scene. The event loop is still the only writer.
 8. **Respond** with the latest event's description and `description_id` if the event is less than 10 s old.
 
 **Why it's built this way:** an `async def` route that called the model directly would block the event loop, which is exactly what `fastapi-reviewer` flags. A plain `def` route runs in a thread pool, and then state would have many writers. Sending only the blocking call to one slot avoids both problems.
@@ -316,9 +316,16 @@ The rescuer first hears the instant short alert ("possible person, left"). About
 **Anti-spam rules (server)**
 
 - **Existing guards stay:** the 4 s alert cooldown, the 10 s same-side repeat, and at most one Gemini call in flight.
-- **`DESCRIBE_COOLDOWN_S` (default 15):** at most one description per window. Short alerts aren't affected.
-- **Skip unchanged scenes:** if the person count and set of sides match the last described scene, don't call Gemini, even after the cooldown. A new person or a change in sides triggers a new description.
-- **Stale drop:** if Gemini answers more than `DESCRIBE_MAX_AGE_S` (default 5) after the alert, discard the answer.
+- **`DESCRIBE_COOLDOWN_S` (default 15) is the overall cap:** at most one call per window, counted from the last attempt (failed attempts count too, so a failing API isn't hammered). No trigger below can get around it. Short alerts aren't affected.
+- **Describe only a new scene.** Descriptions still start only on an alert. The alerting frame's scene is new, and a description is allowed after the cooldown, when any of these hold:
+  1. **Count or sides changed:** the person count or the set of sides differs from the described scene.
+  2. **Emptied and refilled:** frames with no person for `DESCRIBE_EMPTY_RESET_S` (default 3) make the server forget the described scene, so whoever appears next is new. This is tracked on every frame, not only on alerts. A pause with no frames at all doesn't count as empty: the empty run restarts after a gap longer than `DESCRIBE_EMPTY_RESET_S`.
+  3. **Moved or resized:** each box is matched to a described box on the same side, by nearest center (on each side, boxes pair up in left-to-right order, which is the nearest-center pairing). The scene is new if a matched box's center moves more than `DESCRIBE_MOVE_FRAC` (default 0.25) of the frame width, or its area changes by more than `DESCRIBE_AREA_FRAC` (default 0.5) of the described area. This catches a new person swapping in on the same side.
+  4. **Reset:** `DESCRIBE_SCENE_RESET_S` (default 60) since the alert that was last described, even if nothing else changed.
+
+  Otherwise the scene is unchanged and Gemini isn't called. A person standing still alerts every 10 s (same-side repeat), but is described once and then again only after 60 s.
+- The described scene is recorded only when a description is attached. A failed, stale or dropped answer leaves it as it was, so the same scene is tried again after the cooldown. If the scene was forgotten (trigger 2) while the call was running, the answer is still spoken but the scene isn't recorded.
+- **Stale drop:** if Gemini answers more than `DESCRIBE_MAX_AGE_S` (default 5, at most 10) after the alert, or after a newer alert has fired, discard the answer.
 
 **Speaking rules (app, owned by A)**
 
@@ -494,9 +501,13 @@ WINDOW_MAX_AGE_S=2
 IRIS_API_KEY=
 DESCRIBE=on
 GEMINI_API_KEY=
-GEMINI_MODEL=
+GEMINI_MODEL=gemini-3.8-flash
 GEMINI_TIMEOUT_S=6
 DESCRIBE_COOLDOWN_S=15
+DESCRIBE_EMPTY_RESET_S=3
+DESCRIBE_MOVE_FRAC=0.25
+DESCRIBE_AREA_FRAC=0.5
+DESCRIBE_SCENE_RESET_S=60
 DESCRIBE_MAX_AGE_S=5
 GEMINI_PROMPT_FILE=
 MAX_UPLOAD_BYTES=2000000
@@ -537,7 +548,7 @@ An empty `GEMINI_API_KEY` turns descriptions off with a startup warning. An empt
 **Process and secrets**
 - [ ] The service runs as the `iris` user with `NoNewPrivileges`, not as root.
 - [ ] Secrets live only in `/etc/iris.env` (mode 600) and local `.env` files. Only `.env.example` is committed.
-- [ ] Gemini can't be run up by strangers: it only fires after an alert on a keyed request, with at most one call in flight, at most one description per `DESCRIBE_COOLDOWN_S` (15 s), and none for an unchanged scene. Set a usage cap in AI Studio anyway.
+- [ ] Gemini can't be run up by strangers: it only fires after an alert on a keyed request, with at most one call in flight, at most one description per `DESCRIBE_COOLDOWN_S` (15 s), and none for an unchanged scene, so at most 240 calls an hour. Set a usage cap in AI Studio anyway.
 - [ ] `GEMINI_API_KEY` is never logged. `/health` reports describe on or off and the model name, never the key.
 
 **After the event**
@@ -592,8 +603,14 @@ The expected values come from the rules in section 7, not from the code, and a p
 
 - Scenario 12 above: the describer sleeps past the timeout; `/frame` replies normally and `description` is `null`.
 - A frame with several people produces one call and one description.
-- An unchanged scene (same person count and sides), inside and after the describe cooldown, produces no new call.
-- A new person or a change in sides after the describe cooldown produces a new call.
+- A person standing still (alerting every 10 s) is described once and not again within 60 s. At the first alert at or after 60 s it is described again (trigger 4).
+- A change in person count or sides after the describe cooldown produces a new call (trigger 1).
+- Frames empty for at least 3 s and then a person produce a new call after the cooldown. Empty for less than 3 s and then the same scene produces none (trigger 2).
+- A center shift over 0.25 of the width, or an area change over 0.5, produces a new call after the cooldown. Smaller moves produce none (trigger 3).
+- A direct swap, where a new person appears in a clearly different position on the same side with no empty gap, is described at the first alert after the cooldown.
+- Triggers firing inside the cooldown, such as a side change and a move at 5 s and 10 s, produce no second call.
+- A failed or dropped answer leaves the described scene unchanged, so the same scene is tried again after the cooldown.
+- An answer that arrives after the scene emptied for 3 s doesn't record the scene. A pause in the stream doesn't count as empty.
 - An answer later than `DESCRIBE_MAX_AGE_S` is discarded.
 - `description_id` increases, and is `null` whenever `description` is `null`.
 - A missing `GEMINI_API_KEY` means descriptions are off.
