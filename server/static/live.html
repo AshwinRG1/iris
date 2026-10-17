@@ -15,6 +15,7 @@
   #events ul { list-style: none; margin: 0; padding: 0; }
   #events li { padding: 4px 0; border-bottom: 1px solid #333; }
   .hit { color: #ff5a4f; }
+  .stale { color: #ffb347; }
   .dim { color: #9aa; }
   #legend i { display: inline-block; width: 10px; height: 10px; margin: 0 4px 0 10px; }
   .hitkey { background: #ff5a4f; }
@@ -28,7 +29,7 @@
   <span>fps <b id="fps">-</b></span>
   <span>p50 <b id="p50">-</b> ms</span>
   <span>p95 <b id="p95">-</b> ms</span>
-  <span>last frame <b id="age">-</b> s ago</span>
+  <span>last frame <b id="age">-</b> s ago <b id="stale" class="stale"></b></span>
   <span>tuning <b id="tuning">-</b></span>
   <span id="legend"><i class="hitkey"></i>hit<i class="weakkey"></i>below conf_alert</span>
 </div>
@@ -57,6 +58,10 @@ const KEPT_EVENTS = 200;
 let lastEventId = 0;
 let bootId = null;
 let drawnFrameId = 0;
+let lastBitmap = null; // the last image, kept so a stale frame can be shown without boxes
+let lastBitmapFrameId = 0;
+let drawnStale = false;
+let frameBootId = null; // the server instance whose frame ids drawnFrameId refers to
 
 // The key goes in a header, never in a URL, and never to /health.
 function get(path) {
@@ -78,6 +83,8 @@ function draw(bitmap, latest) {
   canvas.width = bitmap.width;
   canvas.height = bitmap.height;
   ctx.drawImage(bitmap, 0, 0);
+  drawnStale = latest.stale;
+  if (latest.stale) return; // old boxes are never drawn
   ctx.lineWidth = Math.max(2, canvas.width / 320);
   ctx.font = Math.max(12, Math.round(canvas.width / 40)) + "px system-ui, sans-serif";
   ctx.textBaseline = "bottom";
@@ -96,6 +103,19 @@ async function pollFrame() {
   try {
     const latest = await getJson("/latest");
     setText("age", latest.age_ms === null ? null : (latest.age_ms / 1000).toFixed(1));
+    setText("stale", latest.stale ? "stale (no new frames)" : "");
+    if (latest.boot_id !== frameBootId) {
+      // The server restarted, so its frame ids started over: forget what was drawn.
+      frameBootId = latest.boot_id;
+      drawnFrameId = 0;
+      drawnStale = false;
+      if (lastBitmap) lastBitmap.close();
+      lastBitmap = null;
+      lastBitmapFrameId = 0;
+    }
+    if (latest.stale && !drawnStale && lastBitmap && lastBitmapFrameId === latest.frame_id) {
+      draw(lastBitmap, latest); // the kept image is this frame's: show it without boxes
+    }
     const t = latest.tuning;
     setText("tuning", "alert>=" + t.conf_alert + " " + t.needed + "/" + t.window +
       " cooldown " + t.cooldown_ms / 1000 + "s repeat " + t.same_side_repeat_ms / 1000 + "s");
@@ -104,7 +124,11 @@ async function pollFrame() {
       // Draw only an image that is this /latest's frame; otherwise the next poll retries.
       if (r.ok && r.headers.get("X-Frame-Id") === String(latest.frame_id)) {
         const bitmap = await createImageBitmap(await r.blob(), { imageOrientation: "none" });
-        try { draw(bitmap, latest); } finally { bitmap.close(); }
+        // lastBitmap owns the bitmap before drawing, so a failed draw cannot leak it.
+        if (lastBitmap) lastBitmap.close();
+        lastBitmap = bitmap;
+        lastBitmapFrameId = latest.frame_id;
+        draw(bitmap, latest);
         drawnFrameId = latest.frame_id;
       }
     }

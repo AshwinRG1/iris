@@ -50,6 +50,42 @@ A sample iOS application demonstrating integration with Meta Wearables Device Ac
 
 ## Troubleshooting
 
+### Mock video playback
+
+In a Debug build, open the ladybug menu, enable MockDeviceKit, pair glasses and
+turn on Power, Donned and Unfolded. Choose **Camera source → Video file** and
+select a movie from Photos. Wait for **Preparing video…** to disappear, dismiss
+the menu, then start a session and the preview. Local playback works with the
+Iris server URL left blank.
+
+Select your original 1080p HEVC movie directly from Photos; CameraAccess prepares
+it automatically before loading the mock feed. Conversion runs in the background
+with a progress bar and Cancel button. The result is an HEVC (`hvc1`) MP4 at 24 fps,
+up to 540×960 portrait or 960×540 landscape, preserving the source aspect ratio
+and orientation. HDR originals are rendered to SDR. The mock feed uses video only.
+
+The converter uses an explicit HEVC Main encoder with frame reordering disabled,
+a one-second keyframe interval and a target bitrate of 1.2 Mb/s. It does not use
+an export preset that can add B-frames. Existing HEVC clips at a suitable size and
+frame rate are copied unchanged only after checking frame sizes and timing.
+Every compressed frame is checked before the file reaches the mock SDK: its
+packet counters can trap on large HEVC keyframes. Oversized frames are retried
+at a smaller resolution and bitrate. Failed or cancelled imports leave the
+previous camera feed selected.
+
+For a sample with no B-frames, tap **Load sample video (720p)** in the mock device
+card, then start the session and preview. This loads the bundled
+`TestResources/iris_nobframes_720p.mp4` directly into `setCameraFeed(fileURL:)`,
+bypassing the picker and transcoder. The portrait HEVC clip is 720×1280 at 24 fps,
+derived from `plant.mp4` with libx265, `bframes=0`, a closed 24-frame GOP and a
+1600 kb/s VBV limit. Use this sample when checking smooth mock playback without
+waiting for a conversion.
+
+The phone currently shows directional detection indicators from `POST /frame`.
+That response contains no box coordinates. Set the server URL and enable
+**Send frames and speak alerts** to receive detections; camera playback alone
+doesn't run an on-device detector.
+
 ### Iris uploads and detection HUD
 
 Tap the waveform button on the camera screen to open **Iris status**. Enter the
@@ -70,14 +106,19 @@ app target's Debug configuration. The CIDR entries describe address ranges and
 do not identify a particular server.
 
 The app sends a fresh 640-pixel-wide JPEG at most every 400 ms, with one request at
-a time and a 1.5-second timeout. Errors appear in Iris status and uploads retry on
-subsequent frames. Pausing or stopping the preview cancels pending uploads and
-speech. The HUD shows server detections under Left, Ahead and Right; the API does
+a time and a 1.5-second timeout. Resizing and JPEG encoding at 0.7 quality run in a
+detached background task after the preview image is published. Errors appear in
+Iris status and uploads retry on subsequent frames. Pausing or stopping the
+preview cancels pending uploads and speech. The HUD shows server detections under
+Left, Ahead and Right; the API does
 not supply bounding boxes. Indicators expire after two seconds without a reply.
 Only server `alert` text is spoken. Optional scene descriptions appear in status.
 
 `FrameUploaderTests` covers the shared JSON fixtures, multipart/JPEG formatting,
-throttling, cancellation and recovery using an in-memory URL loading transport.
+background JPEG drawing, throttling, cancellation and recovery using an in-memory
+URL loading transport. `MockVideoPreparerTests` checks HEVC passthrough, temporary
+file ownership, 1080p conversion in both orientations, H.264 imports, B-frame
+removal, cancellation and the bundled sample's frame timing.
 
 For issues related to the Meta Wearables Device Access Toolkit, please refer to the [developer documentation](https://wearables.developer.meta.com/docs/develop/) or visit our [discussions forum](https://github.com/facebook/meta-wearables-dat-ios/discussions)
 

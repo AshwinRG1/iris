@@ -7,8 +7,11 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from config import Settings
 from deps import Clock, Deps, Describer, Runtime, WallClock, get_deps
@@ -73,10 +76,18 @@ def create_app(
     )
     if not settings.iris_api_key:
         log.warning("IRIS_API_KEY is not set; authentication is off")
+    app.add_exception_handler(RequestValidationError, _short_422)
     app.add_middleware(BodyLimitMiddleware, max_bytes=settings.max_upload_bytes)
     app.include_router(frame_router)
     app.include_router(live_router)
     return app
+
+
+async def _short_422(_request: Request, exc: Exception) -> JSONResponse:
+    # FastAPI's default 422 copies the offending input back. This names where and why only.
+    errors = cast(RequestValidationError, exc).errors()  # registered for this type only
+    reasons = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in errors)
+    return JSONResponse({"detail": reasons}, status_code=422)
 
 
 class _MonotonicClock:

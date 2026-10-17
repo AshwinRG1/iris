@@ -512,8 +512,6 @@ final class CameraViewModel {
       Task { @MainActor [weak self] in
         guard let self else { return }
         if UIApplication.shared.applicationState != .background, let image = previewImage {
-          // Upload the actual live feed even while a captured photo is displayed.
-          self.frameUploader.submit(image)
           // Keep the live surface stable while a capture preview is onscreen.
           if activePreview == nil, !isCapturingPhoto {
             self.currentVideoFrame = image
@@ -521,6 +519,10 @@ final class CameraViewModel {
               self.hasReceivedFirstFrame = true
             }
           }
+          // Publish the preview first. submit only admits the frame and schedules
+          // 640 px / 0.7-quality JPEG preparation off the main actor, at most
+          // every 400 ms, even while a captured photo is displayed.
+          self.frameUploader.submit(image)
         }
         // Capture the actual recording start (first written frame) once, so the timer
         // anchors to the clip's start and matches its duration.

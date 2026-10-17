@@ -33,11 +33,21 @@ final class MockDeviceCardViewModel {
   var isDonned: Bool = false
   var isUnfolded: Bool = false
   var showCameraPermissionAlert: Bool = false
+  var isPreparingVideo = false
+  var videoPreparationProgress = 0.0
+  var showVideoError = false
+  var videoErrorMessage = ""
+  @ObservationIgnored private var videoPreparationTask: Task<Void, Never>?
+  @ObservationIgnored private var videoPreparationID = UUID()
 
   init(device: MockGlasses, hasCameraFeed: Bool = false, hasCapturedImage: Bool = false) {
     self.device = device
     self.hasCameraFeed = hasCameraFeed
     self.hasCapturedImage = hasCapturedImage
+  }
+
+  isolated deinit {
+    videoPreparationTask?.cancel()
   }
 
   var id: String { device.deviceIdentifier }
@@ -111,10 +121,69 @@ final class MockDeviceCardViewModel {
     }
   }
 
-  func selectVideo(from url: URL) {
+  func loadSampleVideo() {
+    guard !isPreparingVideo else { return }
+    guard let url = Bundle.main.url(forResource: "iris_nobframes_720p", withExtension: "mp4") else {
+      videoErrorMessage = "The sample video is missing from this build."
+      showVideoError = true
+      return
+    }
+    // Already HEVC with B-frames disabled. Pass the permanent bundle URL
+    // straight to the SDK so no picker or export preset changes the stream.
     device.services.camera.setCameraFeed(fileURL: url)
     hasCameraFeed = true
     cameraSource = nil
+  }
+
+  func selectVideo(from url: URL) {
+    guard !isPreparingVideo else { return }
+    // The picker owns its exported URL. Copy it before its delegate returns and
+    // the picker dismisses; asynchronous preparation must own its input file.
+    let source = FileManager.default.temporaryDirectory
+      .appendingPathComponent("iris-import-\(UUID().uuidString).\(url.pathExtension)")
+    do {
+      try FileManager.default.copyItem(at: url, to: source)
+    } catch {
+      videoErrorMessage = "Couldn't copy the selected video. Try selecting it again."
+      showVideoError = true
+      return
+    }
+
+    isPreparingVideo = true
+    videoPreparationProgress = 0
+    let preparationID = UUID()
+    videoPreparationID = preparationID
+    videoPreparationTask = Task { [weak self] in
+      defer {
+        try? FileManager.default.removeItem(at: source)
+        self?.isPreparingVideo = false
+        self?.videoPreparationTask = nil
+      }
+      do {
+        let prepared = try await MockVideoPreparer.prepare(from: source) { [weak self] progress in
+          Task { @MainActor [weak self] in
+            guard let self, isPreparingVideo, videoPreparationID == preparationID else { return }
+            videoPreparationProgress = progress
+          }
+        }
+        guard !Task.isCancelled, let self else {
+          try? FileManager.default.removeItem(at: prepared)
+          return
+        }
+        device.services.camera.setCameraFeed(fileURL: prepared)
+        hasCameraFeed = true
+        cameraSource = nil
+      } catch {
+        guard let self, !Task.isCancelled else { return }
+        videoErrorMessage = (error as? MockVideoPreparer.PreparationError)?.localizedDescription
+          ?? "Couldn't read the selected video. Try another clip."
+        showVideoError = true
+      }
+    }
+  }
+
+  func cancelVideoPreparation() {
+    videoPreparationTask?.cancel()
   }
 
   func selectImage(from url: URL) {

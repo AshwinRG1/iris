@@ -41,7 +41,7 @@ The team plan's contract is unchanged. This design only adds optional fields and
 
 ### `POST /frame`
 
-The request is multipart, with a field `file` holding a JPEG (640 px wide, quality 70).
+The request is multipart, with a field `file` holding a JPEG (640 px wide, quality 70). The `file` part may or may not carry a filename; the server reads its raw bytes either way.
 
 **New:** if the server has `IRIS_API_KEY` set, the request must carry an `X-Iris-Key` header. Leave the key unset for local dev.
 
@@ -71,8 +71,13 @@ Errors use FastAPI's `{"detail": "..."}` shape. The app should treat any non-200
 | --- | --- |
 | 400 | The body is not a decodable image, or its sides are larger than 4096 px. |
 | 401 | The key is missing or wrong, when a key is configured. |
+| 404 | Wrong path, such as `/frame/frame`. Clients treat it like any non-200. |
+| 405 | Wrong method, such as GET on `/frame`. |
 | 413 | The body is over 2 MB. |
+| 422 | Any request that fails validation: no `file` part, a body that is not valid multipart, or a bad query value. `detail` is a short string naming the field and reason, never request data. If `file` appears twice, the first wins. |
 | 503 | The model hasn't finished loading yet. |
+
+When Caddy itself rejects a chunked body over 2 MB, its 413 has an empty body, not `{"detail": ...}`. Clients must not depend on error bodies; the app already ignores them.
 
 ### Keeping the app and server compatible
 
@@ -94,10 +99,10 @@ Either side's PRs must be revertable without breaking the other side.
 
 | Method and path | Auth | Purpose |
 | --- | --- | --- |
-| `GET /health` | none | Readiness, active model, device, labels, image size, fps, server ms p50/p95, git commit, tuning |
+| `GET /health` | none | Readiness, active model, device, labels, image size, fps, server ms p50/p95, commit, tuning. p50/p95 cover the last 100 frames within 60 s and are null when none are in that window |
 | `GET /` | key, as `?key=` | Live view page |
 | `GET /latest.jpg` | key, as `?key=` | The last frame received, as raw JPEG |
-| `GET /latest` | key, as `?key=` | `frame_id`, detections with normalized boxes, and the time the frame arrived |
+| `GET /latest` | key, as `?key=` | `frame_id`, detections with normalized boxes, the time the frame arrived, `age_ms`, `boot_id`, and an optional `stale` (true once the published frame is more than 3 s old; `detections` is then empty) |
 | `GET /events?since=<id>` | key, as `?key=` | Recent events: id, `at` (wall-clock UTC, ISO 8601), side, conf, description |
 | `GET /tuning` | none | The current tuning values |
 | `PUT /tuning` | key | Changes tuning at runtime. Validated, kept in memory, reset to env defaults on restart. |
@@ -298,6 +303,7 @@ The defaults are starting points. Tune them at Checkpoint 3 with `PUT /tuning` w
 
 - `GET /` serves `static/live.html`, with no build step and no framework. When a key is configured, the page reads `key` from its own URL and adds it to every poll.
 - It polls `/latest.jpg` and `/latest` about every 300 ms and draws the boxes on a canvas from normalized coordinates. Each box shows its label and conf, and hits are colored differently from detections below `conf_alert`.
+- `/latest` ages a frame from when its result was published, not from when it arrived, so a slow inference does not publish a frame that is already stale. Past `STALE_MS` (3000 ms) it sets `stale` and returns no detections; the page then keeps the last image, draws no boxes and shows "stale (no new frames)". `/latest` also carries `boot_id`, the same id as `/events`; when it changes the page forgets the frame it drew, because frame ids restart from 1. `/health`'s window is the constant `_PERCENTILE_WINDOW_MS` (60 s). Both thresholds are code constants, not settings.
 - It polls `/events` every second for the alert log: `at`, side, conf and description.
 - A header strip shows the model, device, incoming fps, p50/p95 server ms, seconds since the last frame, and the current tuning.
 - **Change from the plan:** the plan had the server draw boxes onto the image. Drawing them in the browser keeps that work out of the frame path, and the same page serves as the "command center" in the demo.
