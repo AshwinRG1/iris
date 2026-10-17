@@ -15,6 +15,7 @@ from domain import Detection, Side
 log = logging.getLogger("iris")
 
 _FPS_WINDOW_MS = 10_000
+_PERCENTILE_WINDOW_MS = 60_000
 _KEEP = 100
 _LOG_RETRY_S = 30.0
 EVENTS_KEPT = 200
@@ -44,8 +45,10 @@ class LatencyStats:
             return 0.0
         return round((len(arrivals) - 1) / ((now_ms - min(arrivals)) / 1000), 2)
 
-    def server_ms_percentile(self, q: float) -> int | None:
-        return nearest_rank([ms for _, ms in self._frames], q)
+    def server_ms_percentile(self, q: float, now_ms: int) -> int | None:
+        """Over frames that arrived in the 60 s ending now; None when there are none."""
+        recent = [ms for t, ms in self._frames if now_ms - _PERCENTILE_WINDOW_MS <= t <= now_ms]
+        return nearest_rank(recent, q)
 
 
 class JsonlLog:

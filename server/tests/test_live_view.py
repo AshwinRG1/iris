@@ -365,3 +365,43 @@ def test_page_sends_the_key_as_a_header_never_to_health() -> None:
     assert '"X-Iris-Key"' in html
     assert "history.replaceState" in html
     assert "X-Frame-Id" in html
+
+
+# --- stale boxes (ticket 12)
+
+
+def _latest_after(age_ms: int) -> dict[str, Any]:
+    clock = SettableClock(1000)
+    with _client([[det()]], clock=clock) as c:
+        _post(c)
+        clock.t = 1000 + age_ms
+        body: dict[str, Any] = c.get("/latest").json()
+    return body
+
+
+def test_latest_is_not_stale_just_after_a_frame_or_at_exactly_three_seconds() -> None:
+    for body in (_latest_after(0), _latest_after(3000)):
+        assert body["stale"] is False
+        assert len(body["detections"]) == 1
+
+
+def test_latest_past_three_seconds_is_stale_with_no_boxes_but_keeps_its_frame() -> None:
+    body = _latest_after(3001)
+    assert body["stale"] is True
+    assert body["detections"] == []
+    assert body["frame_id"] == 1
+    assert body["at"] == "2026-01-01T00:00:00Z"
+    assert body["age_ms"] == 3001
+
+
+def test_latest_before_any_frame_is_not_stale() -> None:
+    with _client() as c:
+        assert c.get("/latest").json()["stale"] is False
+
+
+def test_page_stops_drawing_boxes_and_marks_a_stale_frame() -> None:
+    with _client() as c:
+        html = c.get("/").text
+    assert "latest.stale" in html
+    assert "stale (no new frames)" in html
+    assert "innerHTML" not in html

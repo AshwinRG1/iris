@@ -148,6 +148,7 @@ async def health(
     runtime: Annotated[Runtime, Depends(get_runtime)],
 ) -> Health:
     info = runtime.model_info
+    now_ms = deps.clock.now_ms()
     return Health(
         ready=runtime.ready,
         detector=runtime.name,
@@ -159,7 +160,7 @@ async def health(
         class_names=None if info.class_names is None else list(info.class_names),
         fallback=info.fallback,
         commit=deps.settings.commit,
-        fps=runtime.stats.fps(deps.clock.now_ms()),
-        server_ms_p50=runtime.stats.server_ms_percentile(0.50),
-        server_ms_p95=runtime.stats.server_ms_percentile(0.95),
+        fps=runtime.stats.fps(now_ms),
+        server_ms_p50=runtime.stats.server_ms_percentile(0.50, now_ms),
+        server_ms_p95=runtime.stats.server_ms_percentile(0.95, now_ms),
     )
