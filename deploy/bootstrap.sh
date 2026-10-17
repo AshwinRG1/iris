@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Provision a fresh Ubuntu LTS box for the Iris server. Run once as root; safe to re-run.
+# Provision a fresh box for the Iris server. Run once as root; safe to re-run.
+# The image must be Ubuntu 24.04 LTS or newer (python3 3.12+, like CI).
 #
 #   IRIS_REPO_URL=git@github.com:<org>/iris.git bash bootstrap.sh
 #
@@ -9,12 +10,19 @@
 #   IRIS_REF         branch, tag or commit to deploy (default main).
 #   IRIS_PUBLIC_IP   skip public IP detection.
 #
-# The script stops loudly while IRIS_API_KEY in /etc/iris.env is empty. Set it, re-run.
+# The script stops loudly while IRIS_API_KEY in /etc/iris.env is missing, short or duplicated.
+# Set it, re-run.
 set -euo pipefail
 
 : "${IRIS_REPO_URL:?set IRIS_REPO_URL to the repo SSH URL}"
 IRIS_DEPLOY_KEY="${IRIS_DEPLOY_KEY:-/root/.ssh/iris_deploy}"
 IRIS_REF="${IRIS_REF:-main}"
+
+# Pinned installs. torch and torchvision match the shared dev venv.
+PIP_VERSION=26.2.1
+TORCH_VERSION=2.14.1+cpu
+TORCHVISION_VERSION=0.29.1+cpu
+YOLO26S_SHA256=646f8bc3fe0a656803d95c294f7852321748cb29d13466a1af8862e2db384a1b
 
 APP=/opt/iris
 MODELS=$APP/models
@@ -23,9 +31,44 @@ VENV=$APP/.venv
 ENV_FILE=/etc/iris.env
 DEPLOY_DIR=$APP/deploy
 
-[ "$(id -u)" -eq 0 ] || { echo "run as root" >&2; exit 1; }
-
 log() { printf '==> %s\n' "$*"; }
+die() { printf '%s\n' "$*" >&2; exit 1; }
+
+# True only for four dot-separated octets, each 0-255.
+is_ipv4() {
+  local IFS=. o
+  local -a octets
+  read -ra octets <<<"$1"
+  [ "${#octets[@]}" -eq 4 ] || return 1
+  for o in "${octets[@]}"; do
+    [[ "$o" =~ ^[0-9]{1,3}$ ]] && [ "$((10#$o))" -le 255 ] || return 1
+  done
+}
+
+# Reads a /health body on stdin; prints ready, authoff, error:<load_error> or wait.
+health_state() {
+  python3 -c '
+import json, sys
+try:
+    h = json.load(sys.stdin)
+except ValueError:
+    print("wait")
+    raise SystemExit
+if h.get("load_error"):
+    print("error:" + h["load_error"])
+elif not h.get("ready"):
+    print("wait")
+elif h.get("auth") != "on":
+    print("authoff")
+else:
+    print("ready")
+'
+}
+
+[ "$(id -u)" -eq 0 ] || die "run as root"
+command -v python3 >/dev/null 2>&1 || die "python3 not found; use Ubuntu 24.04 LTS or newer"
+python3 -c 'import sys; sys.exit(sys.version_info < (3, 12))' ||
+  die "python3 is older than 3.12; use Ubuntu 24.04 LTS or newer"
 
 log "packages"
 export DEBIAN_FRONTEND=noninteractive
@@ -34,7 +77,7 @@ apt-get install -y -qq git python3-venv python3-pip curl ca-certificates gnupg \
   debian-keyring debian-archive-keyring apt-transport-https libgl1 libglib2.0-0
 
 if ! command -v caddy >/dev/null 2>&1; then
-  log "caddy"
+  log "installing caddy"
   install -d -m 755 /usr/share/keyrings
   curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key |
     gpg --batch --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
@@ -47,15 +90,24 @@ fi
 log "iris user and directories"
 id iris >/dev/null 2>&1 ||
   useradd --system --home-dir /var/lib/iris --create-home --shell /usr/sbin/nologin iris
-# Code is root-owned and read-only to iris; only models and logs are writable by it.
+# Code and models are root-owned and read-only to iris; only the log directory is writable.
 install -d -m 755 "$APP"
-install -d -m 755 -o iris -g iris "$MODELS"
+install -d -m 755 -o root -g root "$MODELS"
 install -d -m 750 -o iris -g iris "$LOGS"
 
 log "repo"
-export GIT_SSH_COMMAND="ssh -i $IRIS_DEPLOY_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+# GitHub's published SSH host keys, fetched over TLS from the API, replace any github.com lines.
+install -d -m 700 /root/.ssh
+touch /root/.ssh/known_hosts
+GH_KEYS="$(curl -fsS https://api.github.com/meta |
+  python3 -c 'import json, sys; print("\n".join("github.com " + k for k in json.load(sys.stdin)["ssh_keys"]))')"
+[ -n "$GH_KEYS" ] || die "could not read GitHub SSH host keys"
+grep -v '^github\.com ' /root/.ssh/known_hosts >/root/.ssh/known_hosts.new || true
+printf '%s\n' "$GH_KEYS" >>/root/.ssh/known_hosts.new
+mv /root/.ssh/known_hosts.new /root/.ssh/known_hosts
+export GIT_SSH_COMMAND="ssh -i $IRIS_DEPLOY_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/root/.ssh/known_hosts"
 if [ -d "$APP/.git" ]; then
-  git -C "$APP" fetch --tags origin
+  git -C "$APP" fetch --tags --force --prune origin
 else
   # $APP already exists (models, logs), so clone aside and move the .git dir in.
   rm -rf "$APP.clone"
@@ -73,19 +125,25 @@ log "deploying commit $COMMIT"
 
 log "venv (CPU torch first)"
 [ -x "$VENV/bin/python" ] || python3 -m venv "$VENV"
-"$VENV/bin/pip" install -q --upgrade pip
-"$VENV/bin/pip" install -q torch torchvision --index-url https://download.pytorch.org/whl/cpu
+"$VENV/bin/pip" install -q "pip==$PIP_VERSION"
+"$VENV/bin/pip" install -q "torch==$TORCH_VERSION" "torchvision==$TORCHVISION_VERSION" \
+  --index-url https://download.pytorch.org/whl/cpu
 "$VENV/bin/pip" install -q -r "$APP/server/requirements.txt"
 "$VENV/bin/pip" install -q -r "$APP/server/requirements-ml.txt"
 
 log "stock weights in $MODELS"
+# Root-owned, so the service cannot rewrite its own weights. The service runs from $MODELS,
+# so the stock fallback finds this file and never downloads into some other cwd.
 if [ ! -f "$MODELS/yolo26s.pt" ]; then
-  # The service runs from $MODELS, so the stock fallback finds this file and never
-  # downloads into some other cwd.
-  runuser -u iris -- env HOME=/var/lib/iris bash -c \
-    "cd '$MODELS' && '$VENV/bin/python' -c \"from ultralytics import YOLO; YOLO('yolo26s.pt')\""
+  (cd "$MODELS" && "$VENV/bin/python" -c "from ultralytics import YOLO; YOLO('yolo26s.pt')")
 fi
-[ -f "$MODELS/yolo26s.pt" ] || { echo "yolo26s.pt was not placed in $MODELS" >&2; exit 1; }
+if ! echo "$YOLO26S_SHA256  $MODELS/yolo26s.pt" | sha256sum -c --quiet -; then
+  rm -f "$MODELS/yolo26s.pt"
+  die "yolo26s.pt failed its sha256 check and was removed; re-run to download again"
+fi
+chown -R root:root "$MODELS"
+chmod 755 "$MODELS"
+chmod 644 "$MODELS"/*
 
 log "env file"
 if [ ! -f "$ENV_FILE" ]; then
@@ -99,13 +157,18 @@ else
   printf 'IRIS_COMMIT=%s\n' "$COMMIT" >>"$ENV_FILE"
 fi
 
-if ! grep -Eq '^IRIS_API_KEY=.+' "$ENV_FILE"; then
+key_lines="$(grep -c '^IRIS_API_KEY=' "$ENV_FILE" || true)"
+key_value="$(sed -n 's/^IRIS_API_KEY=//p' "$ENV_FILE" | head -n1)"
+# systemd strips surrounding quotes, so judge the value the service will see.
+key_value="${key_value#[\"\']}"
+key_value="${key_value%[\"\']}"
+if [ "$key_lines" -ne 1 ] || [ "${#key_value}" -lt 32 ]; then
   cat >&2 <<MSG
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  IRIS_API_KEY is EMPTY in $ENV_FILE.
-  The server would accept frames from anyone. Bootstrap will NOT finish.
-  Set it, then re-run this script, for example:
+  IRIS_API_KEY in $ENV_FILE is empty, shorter than 32 characters, or set on
+  more than one line (found $key_lines lines). Bootstrap will NOT finish.
+  Keep exactly one line, then re-run this script, for example:
     sed -i "s|^IRIS_API_KEY=.*|IRIS_API_KEY=\$(openssl rand -hex 24)|" $ENV_FILE
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 MSG
@@ -114,9 +177,7 @@ fi
 
 log "caddy"
 IP="${IRIS_PUBLIC_IP:-$(curl -fsS4 https://ipv4.icanhazip.com | tr -d '[:space:]')}"
-case "$IP" in
-  *[!0-9.]* | "") echo "bad public IP: '$IP'" >&2; exit 1 ;;
-esac
+is_ipv4 "$IP" || die "bad public IP: '$IP'"
 HOST="${IP//./-}.nip.io"
 sed "s|__HOST__|$HOST|" "$DEPLOY_DIR/Caddyfile" >/etc/caddy/Caddyfile
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
@@ -130,11 +191,16 @@ systemctl reload-or-restart caddy
 
 log "waiting up to 60 s for /health"
 for _ in $(seq 1 60); do
-  if curl -fsS http://127.0.0.1:8000/health | grep -Eq '"ready": *true'; then
-    log "ready: https://$HOST/health (commit $COMMIT)"
-    exit 0
-  fi
+  body="$(curl -fsS http://127.0.0.1:8000/health 2>/dev/null || true)"
+  state="$(health_state <<<"$body")"
+  case "$state" in
+    ready)
+      log "ready, auth on: https://$HOST/health (commit $COMMIT)"
+      exit 0
+      ;;
+    authoff) die "/health reports auth off; refusing to finish" ;;
+    error:*) die "model failed to load (${state#error:}); see: journalctl -u iris -n 100" ;;
+  esac
   sleep 1
 done
-echo "server did not report ready; see: journalctl -u iris -n 100" >&2
-exit 1
+die "server did not report ready; see: journalctl -u iris -n 100"
