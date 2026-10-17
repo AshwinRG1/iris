@@ -9,12 +9,13 @@
 //
 // CameraView.swift
 //
-// The capture screen: a full-bleed camera preview with controls overlaid on a
+// The capture screen: a fitted camera preview with controls overlaid on a
 // scrim. Walks the SDK's camera lifecycle as explicit steps (Start Session →
 // Start Streaming → Capture / Record → Stop Streaming → End Session) and shows the
 // live DeviceSessionState / StreamState so the state machine is legible.
 //
 
+import MWDATCamera
 import MWDATCore
 import SwiftUI
 import UIKit
@@ -45,8 +46,8 @@ struct CameraView: View {
 
   var body: some View {
     ZStack {
-      // Full-bleed preview (or a dark placeholder) fills the screen so overlaying
-      // the controls never reflows it.
+      // The preview surface fills the screen; the video fits inside it without
+      // cropping, so overlaying the controls never reflows it.
       previewBackground
         .edgesIgnoringSafeArea(.all)
 
@@ -120,9 +121,6 @@ struct CameraView: View {
         // while the stream tears down — so the paused badge / stop loader overlays
         // the preview rather than the start-streaming screen.
         LivePreviewView(viewModel: viewModel)
-          .overlay {
-            DetectionOverlayView(uploader: viewModel.frameUploader)
-          }
         if viewModel.isPaused {
           // Dim the frozen frame so the badge reads as intentionally paused.
           Color.black.opacity(0.35)
@@ -527,7 +525,14 @@ private struct LivePreviewView: View {
       GeometryReader { geometry in
         Image(uiImage: videoFrame)
           .resizable()
-          .aspectRatio(contentMode: .fill)
+          // Uploads contain the whole frame. Show the same field of view for
+          // portrait, landscape and square sources, with black margins as needed.
+          .aspectRatio(contentMode: .fit)
+          .overlay {
+            // Position directions within the image, before expanding its surface
+            // to the screen's bounds (which may include letterboxing).
+            DetectionOverlayView(uploader: viewModel.frameUploader)
+          }
           .frame(width: geometry.size.width, height: geometry.size.height)
           .clipped()
       }

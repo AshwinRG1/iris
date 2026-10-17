@@ -1,6 +1,6 @@
 # Camera Access App
 
-A sample iOS application demonstrating integration with Meta Wearables Device Access Toolkit. This app walks the SDK's camera lifecycle as explicit steps — start a session, start the preview, capture or record, stop the preview, end the session — on a single full-bleed camera screen.
+A sample iOS application demonstrating integration with Meta Wearables Device Access Toolkit. This app walks the SDK's camera lifecycle as explicit steps — start a session, start the preview, capture or record, stop the preview, end the session — in a single full-screen camera view.
 
 ## Features
 
@@ -86,6 +86,11 @@ That response contains no box coordinates. Set the server URL and enable
 **Send frames and speak alerts** to receive detections; camera playback alone
 doesn't run an on-device detector.
 
+The live preview fits each frame to the available screen while preserving its
+aspect ratio, with black margins when needed. Directional indicators stay within
+the displayed image's bounds. The preview and detection uploads use the same
+complete frame, including for landscape, square and tall videos.
+
 ### Iris uploads and detection HUD
 
 Tap the waveform button on the camera screen to open **Iris status**. Enter the
@@ -111,12 +116,18 @@ detached background task after the preview image is published. Errors appear in
 Iris status and uploads retry on subsequent frames. Pausing or stopping the
 preview cancels pending uploads and speech. The HUD shows server detections under
 Left, Ahead and Right; the API does
-not supply bounding boxes. Indicators expire after two seconds without a reply.
+not supply bounding boxes. Each side's indicator stays visible through brief
+misses, dims to 50% while missing, and fades out after three misses or 1.2 seconds
+since its last detection. Failed requests do not count as misses; the overlay
+also clears after two seconds without a successful frame reply. Stopping the
+preview or changing upload settings clears it immediately.
 Only server `alert` text is spoken. Optional scene descriptions appear in status.
 
 `FrameUploaderTests` covers the shared JSON fixtures, multipart/JPEG formatting,
 background JPEG drawing, throttling, cancellation and recovery using an in-memory
-URL loading transport. `MockVideoPreparerTests` checks HEVC passthrough, temporary
+URL loading transport, plus held indicators across misses, errors and resets.
+`DetectionHoldTests` checks per-side history, dimming, expiry and future directions.
+`MockVideoPreparerTests` checks HEVC passthrough, temporary
 file ownership, 1080p conversion in both orientations, H.264 imports, B-frame
 removal, cancellation and the bundled sample's frame timing.
 
