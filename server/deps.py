@@ -9,7 +9,7 @@ from fastapi import Request
 
 from config import Settings
 from detector import Detector
-from domain import PolicyState
+from domain import PolicyState, Tuning
 
 
 # Placeholder: moves to the describer module in a later ticket.
@@ -37,6 +37,7 @@ class Deps:
 @dataclass
 class Runtime:
     device: str
+    tuning: Tuning
     ready: bool = False
     load_error: str | None = None
     last_frame_id: int = 0

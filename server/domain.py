@@ -47,6 +47,18 @@ class Tuning:
     same_side_repeat_ms: int = 10000
     window_max_age_ms: int = 2000
 
+    def __post_init__(self) -> None:
+        if not 0 < self.conf_alert <= 1:
+            raise ValueError("conf_alert must be in (0, 1]")
+        if not 1 <= self.needed <= self.window:
+            raise ValueError("needed must satisfy 1 <= needed <= window")
+        for name in ("cooldown_ms", "same_side_repeat_ms", "window_max_age_ms"):
+            v = getattr(self, name)
+            if not isinstance(v, int) or isinstance(v, bool) or v < 0:
+                raise ValueError(f"{name} must be an integer >= 0")
+        if self.window_max_age_ms <= 0:
+            raise ValueError("window_max_age_ms must be > 0")
+
 
 @dataclass(frozen=True)
 class PolicyState:

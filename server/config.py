@@ -2,7 +2,7 @@
 
 from typing import Self
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from domain import Tuning
@@ -21,16 +21,15 @@ class Settings(BaseSettings):
     conf_alert: float = 0.35
     window: int = 3
     needed: int = 2
-    cooldown_s: float = 4.0
-    same_side_repeat_s: float = 10.0
-    window_max_age_s: float = 2.0
+    cooldown_s: float = Field(default=4.0, ge=0, allow_inf_nan=False)
+    same_side_repeat_s: float = Field(default=10.0, ge=0, allow_inf_nan=False)
+    window_max_age_s: float = Field(default=2.0, ge=0, allow_inf_nan=False)
 
     @model_validator(mode="after")
     def _check_tuning(self) -> Self:
-        if not 0 < self.conf_alert <= 1:
-            raise ValueError("CONF_ALERT must be in (0, 1]")
-        if not 1 <= self.needed <= self.window:
-            raise ValueError("NEEDED must satisfy 1 <= NEEDED <= WINDOW")
+        if self.conf_alert < self.conf_detect:
+            raise ValueError("CONF_ALERT must be at least CONF_DETECT")
+        self.tuning  # noqa: B018  (Tuning validates itself; a bad value fails startup here)
         return self
 
     @property

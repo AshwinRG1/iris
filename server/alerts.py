@@ -1,12 +1,19 @@
-"""Alert policy (ADR 0002): a pure decision over state, hits, time and tuning."""
+"""Alert policy (ADR 0002): a pure decision over state, detections, time and tuning."""
 
 from domain import Detection, PolicyState, Side, Tuning
 
 
 def decide(
-    state: PolicyState, hits: list[Detection], now_ms: int, tuning: Tuning
+    state: PolicyState, detections: list[Detection], now_ms: int, tuning: Tuning
 ) -> tuple[PolicyState, str | None]:
-    """Return the new state and the alert text, or None. `hits` are this frame's hits."""
+    """Return the new state and the alert text, or None.
+
+    `detections` are this frame's kept detections (alert labels, above CONF_DETECT).
+    """
+    if state.recent:
+        # Uploads can finish out of order; time never goes backwards.
+        now_ms = max(now_ms, state.recent[-1][0])
+    hits = [d for d in detections if d.conf >= tuning.conf_alert]
     fresh = (e for e in state.recent if now_ms - e[0] <= tuning.window_max_age_ms)
     recent = (*fresh, (now_ms, bool(hits)))[-tuning.window :]
     if not hits or sum(hit for _, hit in recent) < tuning.needed:

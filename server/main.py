@@ -53,7 +53,7 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="Iris server", lifespan=_lifespan)
     app.state.deps = Deps(detector, describer, clock, wall_clock, settings)
-    app.state.runtime = Runtime(device=detector.device)
+    app.state.runtime = Runtime(device=detector.device, tuning=settings.tuning)
     app.include_router(frame_router)
     return app
 

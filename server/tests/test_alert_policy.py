@@ -82,6 +82,12 @@ def test_hits_from_before_a_pause_are_forgotten() -> None:  # scenario 7
         {"NEEDED": "0"},
         {"CONF_ALERT": "0"},
         {"CONF_ALERT": "1.5"},
+        {"CONF_ALERT": "0.2"},  # below the default CONF_DETECT of 0.25
+        {"COOLDOWN_S": "inf"},
+        {"COOLDOWN_S": "nan"},
+        {"COOLDOWN_S": "-1"},
+        {"SAME_SIDE_REPEAT_S": "-0.5"},
+        {"WINDOW_MAX_AGE_S": "0"},
     ],
 )
 def test_impossible_tuning_is_refused_at_startup(
@@ -100,6 +106,30 @@ def test_tuning_comes_from_the_environment_in_seconds(monkeypatch: pytest.Monkey
     alerts = run([(0, HIT), (1000, HIT), (1500, HIT), (2000, HIT), (3000, HIT)], Settings())
     # needed=1: the first hit alerts; 1500 ms cooldown; same side again only after 2 s.
     assert list(alerts) == [0, 2000]
+
+
+def test_a_hit_exactly_2_seconds_old_still_counts() -> None:
+    assert run([(0, HIT), (2000, HIT)]) == {2000: "possible person, left"}
+
+
+def test_a_hit_older_than_2_seconds_is_forgotten() -> None:
+    assert run([(0, HIT), (2001, HIT)]) == {}
+
+
+def test_a_miss_frame_never_alerts_even_if_the_window_holds_a_hit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NEEDED", "1")
+    monkeypatch.setenv("COOLDOWN_S", "0.1")
+    monkeypatch.setenv("SAME_SIDE_REPEAT_S", "0.1")
+    assert run([(0, HIT), (500, MISS)], Settings()) == {0: "possible person, left"}
+
+
+def test_a_frame_arriving_with_an_older_time_does_not_break_the_policy() -> None:
+    right = [det(conf=0.6, cx=0.9)]
+    frames: Frames = [(0, HIT), (400, HIT), (300, HIT), (4400, right), (4800, right)]
+    # 300 is treated as 400: no alert, no error; later frames behave as normal.
+    assert run(frames) == {400: "possible person, left", 4800: "possible person, right"}
 
 
 def test_a_hit_on_another_side_counts_toward_the_window() -> None:  # scenario 14
