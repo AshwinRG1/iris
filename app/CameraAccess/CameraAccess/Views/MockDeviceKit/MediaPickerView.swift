@@ -32,7 +32,8 @@ struct MediaPickerView: UIViewControllerRepresentable {
     switch mode {
     case .video:
       picker.mediaTypes = ["public.movie"]
-      picker.videoExportPreset = AVAssetExportPresetHEVCHighestQuality
+      // Keep the original for MockVideoPreparer's controlled conversion.
+      picker.videoExportPreset = AVAssetExportPresetPassthrough
     case .image:
       picker.mediaTypes = ["public.image"]
     }
