@@ -1,5 +1,21 @@
 # Template. bootstrap.sh replaces __HOST__ with <ip-with-dashes>.nip.io.
-# No log directive: Caddy writes no access log, so request URLs stay off disk.
+# No access log is enabled. The default (error and runtime) log still redacts the API key,
+# since error entries can carry the request.
+# On-box check: stop iris, send one keyed request (header and ?key=), then
+#   journalctl -u caddy | grep -i iris-key
+# must print nothing, and `journalctl -u caddy | grep "key="` must show no real key.
+{
+	log default {
+		format filter {
+			wrap console
+			request>uri query {
+				replace key REDACTED
+			}
+			request>headers>X-Iris-Key delete
+		}
+	}
+}
+
 __HOST__ {
 	request_body {
 		max_size 2MB

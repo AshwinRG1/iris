@@ -6,11 +6,28 @@ After=network.target
 User=iris
 WorkingDirectory=/opt/iris/models
 EnvironmentFile=/etc/iris.env
+# Auth can never be silently off: a short or empty key fails startup. $$ is a literal $ for systemd.
+ExecStartPre=/bin/sh -c '[ "$${#IRIS_API_KEY}" -ge 32 ]'
 ExecStart=/opt/iris/.venv/bin/uvicorn main:app --app-dir /opt/iris/server --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
 Restart=always
 RestartSec=2
 NoNewPrivileges=true
 PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/iris/logs
+StateDirectory=iris
+ProtectHome=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+UMask=0027
 
 [Install]
 WantedBy=multi-user.target
