@@ -10,7 +10,10 @@ from domain import Detection, Side
 
 @dataclass(frozen=True)
 class SceneBox:
-    """One person as the described scene remembers them; all values are normalized."""
+    """One person as the described scene remembers them.
+
+    `cx` is the box centre as a share of the frame width, `area` a share of the frame area.
+    """
 
     side: Side
     cx: float
@@ -33,8 +36,12 @@ class DescribeTuning:
 class DescribeState:
     last_started_ms: int | None = None  # attempts count, so a failing API isn't hammered
     last_scene: Scene | None = None  # set only when a description was attached
-    attached_ms: int | None = None  # the alert time of that description
+    # The 60 s scene reset runs from the described alert's time, not from the answer's arrival.
+    attached_ms: int | None = None
     empty_since_ms: int | None = None  # first frame of the current run of empty frames
+    run_reset: bool = False  # this empty run already crossed the reset, so it counts once
+    resets: int = 0  # an epoch: an answer that started before a reset must not set the scene
+    last_frame_ms: int | None = None
 
 
 def scene_of(kept: list[Detection]) -> Scene:
@@ -55,13 +62,16 @@ def note_frame(
     state: DescribeState, kept: list[Detection], now_ms: int, empty_reset_ms: int
 ) -> DescribeState:
     """Every frame: a long enough run of empty frames forgets the described scene."""
+    # A gap with no frames at all is a paused stream, not an empty view: it starts a new run.
+    paused = state.last_frame_ms is not None and now_ms - state.last_frame_ms > empty_reset_ms
+    state = replace(state, last_frame_ms=now_ms)
     if kept:
-        return state if state.empty_since_ms is None else replace(state, empty_since_ms=None)
-    if state.empty_since_ms is None:
-        return replace(state, empty_since_ms=now_ms)
-    if now_ms - state.empty_since_ms >= empty_reset_ms and state.last_scene is not None:
-        return replace(state, last_scene=None)
-    return state
+        return replace(state, empty_since_ms=None, run_reset=False)
+    if state.empty_since_ms is None or paused:
+        return replace(state, empty_since_ms=now_ms, run_reset=False)
+    if state.run_reset or now_ms - state.empty_since_ms < empty_reset_ms:
+        return state
+    return replace(state, last_scene=None, resets=state.resets + 1, run_reset=True)
 
 
 def attached(state: DescribeState, scene: Scene, t_ms: int) -> DescribeState:
@@ -76,20 +86,21 @@ def scene_changed(state: DescribeState, scene: Scene, now_ms: int, tuning: Descr
         return True
     if len(old) != len(scene) or {b.side for b in old} != {b.side for b in scene}:
         return True
-    free = list(old)
-    for b in scene:  # greedy: each person takes the nearest unused described one on their side
-        same_side = [o for o in free if o.side == b.side]
-        if not same_side:
-            return True  # same sides, different head count per side
-        match = min(same_side, key=lambda o: abs(o.cx - b.cx))
-        free.remove(match)
-        if abs(match.cx - b.cx) > tuning.move_frac:
+    # Per side, both lists are in centre order, and pairing in order is the nearest pairing.
+    for side in {b.side for b in old}:
+        pairs = zip(
+            [b for b in old if b.side == side], [b for b in scene if b.side == side], strict=False
+        )
+        if sum(b.side == side for b in old) != sum(b.side == side for b in scene):
             return True
-        if match.area <= 0:
-            if b.area > 0:
+        for was, now in pairs:
+            if abs(was.cx - now.cx) > tuning.move_frac:
                 return True
-        elif abs(b.area - match.area) / match.area > tuning.area_frac:
-            return True
+            if was.area <= 0:
+                if now.area > 0:
+                    return True
+            elif abs(now.area - was.area) / was.area > tuning.area_frac:
+                return True
     return False
 
 

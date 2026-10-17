@@ -48,7 +48,8 @@ def start_description(
     ):
         return
     runtime.describe_state = replace(runtime.describe_state, last_started_ms=event.t_ms)
-    task = asyncio.create_task(_describe(deps, runtime, describer, event, jpeg, kept))
+    epoch = runtime.describe_state.resets
+    task = asyncio.create_task(_describe(deps, runtime, describer, event, jpeg, kept, epoch))
     runtime.describe_tasks.add(task)  # the loop holds tasks weakly
     task.add_done_callback(runtime.describe_tasks.discard)
 
@@ -60,6 +61,7 @@ async def _describe(
     event: Event,
     jpeg: bytes,
     kept: list[Detection],
+    epoch: int,
 ) -> None:
     s = deps.settings
     try:
@@ -90,5 +92,8 @@ async def _describe(
     if described is None:
         log.warning("description dropped; event %d left the ring", event.id)
         return
-    runtime.describe_state = attached(runtime.describe_state, scene_of(kept), event.t_ms)
+    # The scene was reset while the call was out: the event is still described, but a person
+    # who left and came back must not count as already described.
+    if runtime.describe_state.resets == epoch:
+        runtime.describe_state = attached(runtime.describe_state, scene_of(kept), event.t_ms)
     runtime.event_log.append(event_json(described))

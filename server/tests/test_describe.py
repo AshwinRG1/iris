@@ -402,6 +402,7 @@ def test_a_person_standing_still_is_described_once_per_minute(make: Make) -> Non
     rig.described(1)
     rig.idle()
     rig.run(800, 59_600, [A])  # alerts at 10.4 s, 20.4 s ... 50.4 s
+    assert len(rig.events()) == 6  # the alerts fired; only the scene rule held back the calls
     assert len(d.calls) == 1
     rig.run(60_000, 60_400, [A])  # the next alert is at 60.4 s
     wait_for(lambda: len(d.calls) == 2)
@@ -446,3 +447,25 @@ def test_triggers_inside_the_cooldown_make_no_call(make: Make) -> None:
 def test_bad_scene_settings_fail_startup(bad: dict[str, float]) -> None:
     with pytest.raises(ValueError):
         Settings(**bad)  # type: ignore[arg-type]
+
+
+def test_a_late_answer_does_not_bring_back_a_scene_that_was_reset(make: Make) -> None:
+    d = FakeDescriber("said", gated=True)
+    rig = make(d)
+    rig.alert_at(400, [A])
+    wait_for(lambda: len(d.calls) == 1)
+    rig.run(800, 4000, [])  # empty for 3.2 s while the call is out
+    rig.frame(4400, [A])  # the person returns
+    rig.release()
+    rig.described(1)  # still spoken
+    rig.idle()
+    rig.alert_at(16_000, [A])
+    wait_for(lambda: len(d.calls) == 2)
+
+
+def test_a_pause_in_the_stream_does_not_reset_the_scene(make: Make) -> None:
+    rig, d = _described_at_400(make)
+    rig.frame(800, [])
+    rig.frame(10_800, [])  # ten seconds with no frames at all
+    rig.alert_at(16_000, [A])
+    assert not rig.runtime.describe_tasks and len(d.calls) == 1
