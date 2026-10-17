@@ -2,11 +2,11 @@
 # Provision a fresh box for the Iris server. Run once as root; safe to re-run.
 # The image must be Ubuntu 24.04 LTS or newer (python3 3.12+, like CI).
 #
-#   IRIS_REPO_URL=git@github.com:<org>/iris.git bash bootstrap.sh
+#   IRIS_REPO_URL=https://github.com/AshwinRG1/iris.git bash bootstrap.sh
 #
 # Environment:
-#   IRIS_REPO_URL    required. SSH URL of the repo (private, read-only deploy key).
-#   IRIS_DEPLOY_KEY  path to the deploy private key (default /root/.ssh/iris_deploy).
+#   IRIS_REPO_URL    required. HTTPS URL of the repo (public), or an SSH URL with IRIS_DEPLOY_KEY if the repo is ever made private.
+#   IRIS_DEPLOY_KEY  path to the deploy private key, only used with an SSH IRIS_REPO_URL (default /root/.ssh/iris_deploy).
 #   IRIS_REF         branch, tag or commit to deploy (default main).
 #   IRIS_PUBLIC_IP   skip public IP detection.
 #
@@ -14,7 +14,7 @@
 # Set it, re-run.
 set -euo pipefail
 
-: "${IRIS_REPO_URL:?set IRIS_REPO_URL to the repo SSH URL}"
+: "${IRIS_REPO_URL:?set IRIS_REPO_URL to the repo URL}"
 IRIS_DEPLOY_KEY="${IRIS_DEPLOY_KEY:-/root/.ssh/iris_deploy}"
 IRIS_REF="${IRIS_REF:-main}"
 
