@@ -61,6 +61,15 @@ class Tuning:
 
 
 @dataclass(frozen=True)
+class Alert:
+    """A fired alert: its text, the strongest hit it names, and the time the policy used."""
+
+    text: str
+    hit: Detection
+    t_ms: int
+
+
+@dataclass(frozen=True)
 class PolicyState:
     recent: tuple[tuple[int, bool], ...] = ()  # (t_ms, hit) pairs
     last_alert_ms: int | None = None
