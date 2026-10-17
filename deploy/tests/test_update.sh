@@ -108,9 +108,35 @@ new_world() {
   : >"$W/pip.log"
   : >"$W/systemctl.log"
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s/systemctl.log"\n' "$W" >"$W/bin/systemctl"
-  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s/pip.log"\n' "$W" >"$W/venv/bin/pip"
+  # Fake pip: logs its call; exits 1 while $W/pip.fail holds a count above 0 (counting down).
+  cat >"$W/venv/bin/pip" <<PIP
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$W/pip.log"
+n=\$(cat "$W/pip.fail" 2>/dev/null || echo 0)
+if [ "\$n" -gt 0 ]; then
+  echo \$((n - 1)) >"$W/pip.fail"
+  exit 1
+fi
+PIP
   chmod +x "$W/bin/systemctl" "$W/venv/bin/pip"
-  ENVF="$W/iris.env"
+  # The box has util-linux flock. Where it is missing (macOS), a python fcntl stand-in with the
+  # same `flock -n <fd>` behaviour runs the same lock code path.
+  if command -v flock >/dev/null 2>&1; then
+    FLOCK_KIND=real
+  else
+    FLOCK_KIND=shim
+    cat >"$W/bin/flock" <<'SHIM'
+#!/usr/bin/env python3
+import fcntl, sys
+try:
+    fcntl.flock(int(sys.argv[2]), fcntl.LOCK_EX | fcntl.LOCK_NB)
+except OSError:
+    sys.exit(1)
+SHIM
+    chmod +x "$W/bin/flock"
+  fi
+  mkdir -p "$W/etc"
+  ENVF="$W/etc/iris.env"
   printf 'IRIS_API_KEY=%s\nIRIS_COMMIT=0ld0ld0\nOTHER_SETTING=a|b&c \\d "q"\n' "$TEST_KEY" >"$ENVF"
   chmod 600 "$ENVF"
   start_health
@@ -128,9 +154,29 @@ run_update() { # run_update <args...>; sets RC, OUT, ERR
   set +e
   IRIS_APP_DIR="$APP" IRIS_ENV_FILE="$ENVF" IRIS_VENV="$W/venv" \
     IRIS_HEALTH_URL="http://127.0.0.1:$PORT/health" IRIS_HEALTH_TIMEOUT_S=3 \
-    IRIS_SYSTEMCTL="$W/bin/systemctl" bash "$UPDATE" "$@" >"$OUT" 2>"$ERR"
+    IRIS_SYSTEMCTL="$W/bin/systemctl" IRIS_LOCK_FILE="$W/lock" PATH="$W/bin:$PATH" \
+    bash "$UPDATE" "$@" >"$OUT" 2>"$ERR"
   RC=$?
   set -e
+}
+
+# Start an update in the background with a long health wait; sets BGPID, OUT, ERR. Returns once
+# the deploy has restarted the service (so it is inside the health wait).
+start_update_bg() { # start_update_bg <timeout> <args...>
+  local t="$1" _
+  shift
+  OUT="$W/out.$RANDOM"
+  ERR="$W/err.$RANDOM"
+  IRIS_APP_DIR="$APP" IRIS_ENV_FILE="$ENVF" IRIS_VENV="$W/venv" \
+    IRIS_HEALTH_URL="http://127.0.0.1:$PORT/health" IRIS_HEALTH_TIMEOUT_S="$t" \
+    IRIS_SYSTEMCTL="$W/bin/systemctl" IRIS_LOCK_FILE="$W/lock" PATH="$W/bin:$PATH" \
+    bash "$UPDATE" "$@" >"$OUT" 2>"$ERR" &
+  BGPID=$!
+  for _ in $(seq 1 100); do
+    [ "$(restarts)" -ge 1 ] && break
+    sleep 0.1
+  done
+  sleep 0.5
 }
 
 no_key_leak() { ! grep -qF "$TEST_KEY" "$OUT" "$ERR"; }
@@ -246,5 +292,86 @@ run_update "$(git -C "$W/origin.git" rev-parse good)"
 check "sha: deploys the commit" eq "$(head_of)" "$(git -C "$W/origin.git" rev-parse good)"
 end_world
 
+owner_of() { python3 -c 'import os, sys; s = os.stat(sys.argv[1]); print(s.st_uid, s.st_gid)' "$1"; }
+inode_of() { python3 -c 'import os, sys; print(os.stat(sys.argv[1]).st_ino)' "$1"; }
+only_env_file() { [ "$(ls -A "$W/etc")" = "iris.env" ]; }
+no_ready_msg() { ! grep -q "ready, auth on" "$OUT" "$ERR"; }
+
+# --- env file: atomic replace, owner and mode kept, no temp files left behind
+new_world 9
+INODE0="$(inode_of "$ENVF")"
+OWNER0="$(owner_of "$ENVF")"
+run_update good
+check "env atomic: good run leaves no temp file" only_env_file
+check "env atomic: inode changed (renamed over)" ne "$(inode_of "$ENVF")" "$INODE0"
+check "env atomic: owner kept" eq "$(owner_of "$ENVF")" "$OWNER0"
+check "env atomic: mode kept 600" eq "$(mode_of "$ENVF")" 0o600
+run_update bad
+check "env atomic: bad run leaves no temp file" only_env_file
+run_update no-such-ref
+check "env atomic: unknown ref leaves no temp file" only_env_file
+end_world
+
+# --- a failed pip install fails the deploy and rolls back
+new_world 10
+cp "$ENVF" "$W/env.before"
+PREV_SHA="$(head_of)"
+echo 1 >"$W/pip.fail"
+run_update good
+check "pip fails: exits non-zero" ne "$RC" 0
+check "pip fails: says rolled back" says "rolled back to ${PREV_SHA:0:7}"
+check "pip fails: previous commit checked out" eq "$(head_of)" "$PREV_SHA"
+check "pip fails: env file identical after rollback" eq "$(hash_of "$ENVF")" "$(hash_of "$W/env.before")"
+check "pip fails: never reports ready" no_ready_msg
+check "pip fails: failed deploy did not restart" eq "$(restarts)" 1
+end_world
+
+# --- a rollback whose reinstall also fails
+new_world 11
+echo 2 >"$W/pip.fail"
+run_update good
+check "pip fails twice: exits non-zero" ne "$RC" 0
+check "pip fails twice: says ROLLBACK ALSO FAILED" says "ROLLBACK ALSO FAILED"
+end_world
+
+# --- TERM mid-deploy rolls back (health never comes up, so the script is inside its wait)
+new_world 12
+cp "$ENVF" "$W/env.before"
+PREV_SHA="$(head_of)"
+start_update_bg 30 bad
+kill -TERM "$BGPID"
+set +e
+wait "$BGPID"
+RC=$?
+set -e
+check "TERM: exits non-zero" ne "$RC" 0
+check "TERM: previous commit checked out" eq "$(head_of)" "$PREV_SHA"
+check "TERM: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0ld0ld0
+check "TERM: env file identical" eq "$(hash_of "$ENVF")" "$(hash_of "$W/env.before")"
+check "TERM: says rolled back" says "rolled back to ${PREV_SHA:0:7}"
+check "TERM: rollback restarted the service" eq "$(restarts)" 2
+end_world
+
+# --- a second run is refused while the first holds the lock
+new_world 13
+PREV_SHA="$(head_of)"
+start_update_bg 30 bad
+FIRST_OUT="$OUT"
+FIRST_ERR="$ERR"
+run_update good
+check "lock: concurrent run exits non-zero" ne "$RC" 0
+check "lock: concurrent run says already running" says "already running"
+check "lock: concurrent run did not restart" eq "$(restarts)" 1
+kill -TERM "$BGPID"
+set +e
+wait "$BGPID"
+set -e
+OUT="$FIRST_OUT"
+ERR="$FIRST_ERR"
+check "lock: first run still rolled back" says "rolled back to ${PREV_SHA:0:7}"
+check "lock: first run left previous commit" eq "$(head_of)" "$PREV_SHA"
+end_world
+
+echo "flock: $FLOCK_KIND (real = util-linux, shim = python stand-in); skipped: none"
 printf '\n%d passed, %d failed\n' "$PASSED" "$FAILED"
 [ "$FAILED" -eq 0 ]

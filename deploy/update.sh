@@ -8,6 +8,9 @@
 # IRIS_COMMIT come back, and the script exits non-zero. Re-running the ref that is already
 # checked out only verifies health. An unknown ref exits before anything changes.
 #
+# A kill (HUP, INT, TERM) after the checkout rolls back too. Even so, run it under nohup or
+# systemd-run so a dropped SSH session does not interrupt it at all.
+#
 # The script never sources, prints or rewrites anything in the env file except IRIS_COMMIT,
 # and never touches the models directory or torch.
 #
@@ -18,8 +21,10 @@
 #   IRIS_HEALTH_URL        health endpoint (default http://127.0.0.1:8000/health).
 #   IRIS_HEALTH_TIMEOUT_S  seconds to wait for ready (default 60).
 #   IRIS_SYSTEMCTL         systemctl command (default systemctl).
-#   IRIS_GIT_SSH           git SSH command; defaults to an existing GIT_SSH_COMMAND, else the
-#                          deploy key from bootstrap.sh (IRIS_DEPLOY_KEY, /root/.ssh/iris_deploy).
+#   IRIS_GIT_SSH           git SSH command; default is the deploy key from bootstrap.sh
+#                          (IRIS_DEPLOY_KEY, /root/.ssh/iris_deploy). An inherited
+#                          GIT_SSH_COMMAND is ignored.
+#   IRIS_LOCK_FILE         flock file so two updates cannot overlap (default /run/iris-update.lock).
 set -euo pipefail
 
 APP="${IRIS_APP_DIR:-/opt/iris}"
@@ -28,9 +33,11 @@ VENV="${IRIS_VENV:-/opt/iris/.venv}"
 HEALTH_URL="${IRIS_HEALTH_URL:-http://127.0.0.1:8000/health}"
 HEALTH_TIMEOUT_S="${IRIS_HEALTH_TIMEOUT_S:-60}"
 SYSTEMCTL="${IRIS_SYSTEMCTL:-systemctl}"
+LOCK_FILE="${IRIS_LOCK_FILE:-/run/iris-update.lock}"
 IRIS_DEPLOY_KEY="${IRIS_DEPLOY_KEY:-/root/.ssh/iris_deploy}"
-GIT_SSH_COMMAND="${IRIS_GIT_SSH:-${GIT_SSH_COMMAND:-ssh -i $IRIS_DEPLOY_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/root/.ssh/known_hosts}}"
+GIT_SSH_COMMAND="${IRIS_GIT_SSH:-ssh -i $IRIS_DEPLOY_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/root/.ssh/known_hosts}"
 export GIT_SSH_COMMAND
+unset GIT_DIR GIT_WORK_TREE
 
 log() { printf '==> %s\n' "$*"; }
 die() { printf '%s\n' "$*" >&2; exit 1; }
@@ -79,27 +86,63 @@ wait_health() {
   return 1
 }
 
-# Replace the IRIS_COMMIT line with $1 (a whole "IRIS_COMMIT=..." line), or append it. Every other
-# line stays byte-for-byte; the file is rewritten in place so its mode and owner are kept.
-set_commit_line() {
-  local tmp
-  tmp="$(umask 077 && mktemp)"
-  NEWLINE="$1" awk '
-    /^IRIS_COMMIT=/ { if (!done) print ENVIRON["NEWLINE"]; done = 1; next }
-    { print }
-    END { if (!done) print ENVIRON["NEWLINE"] }
-  ' "$ENV_FILE" >"$tmp"
-  cat "$tmp" >"$ENV_FILE"
-  rm -f "$tmp"
+# Give $2 the mode and owner of $1. GNU --reference on the box; stat fallback elsewhere.
+copy_perms() {
+  if chown --reference="$1" "$2" 2>/dev/null; then
+    chmod --reference="$1" "$2"
+  else
+    chown "$(stat -f '%u:%g' "$1")" "$2"
+    chmod "$(stat -f '%Lp' "$1")" "$2"
+  fi
 }
 
+# Replace the IRIS_COMMIT line with $1 (a whole "IRIS_COMMIT=..." line), or append it. Every other
+# line stays byte-for-byte. The new file is built beside the old one and renamed over it, so a
+# crash leaves either the old file or the new one, and a failure leaves no copy of the key behind.
+set_commit_line() {
+  local tmp
+  tmp="$(mktemp "$(dirname "$ENV_FILE")/.iris.env.XXXXXX")" || return 1
+  {
+    NEWLINE="$1" awk '
+      /^IRIS_COMMIT=/ { if (!done) print ENVIRON["NEWLINE"]; done = 1; next }
+      { print }
+      END { if (!done) print ENVIRON["NEWLINE"] }
+    ' "$ENV_FILE" >"$tmp" &&
+      copy_perms "$ENV_FILE" "$tmp" &&
+      sync &&
+      mv -f "$tmp" "$ENV_FILE"
+  } || {
+    rm -f "$tmp"
+    return 1
+  }
+}
+
+# Each step is checked explicitly: inside `if` or `&&` set -e is off, so a failed pip must
+# return here instead of being masked by the restart.
 install_and_restart() {
-  "$VENV/bin/pip" install -q -r "$APP/server/requirements-ml.txt"
-  "$SYSTEMCTL" restart iris
+  "$VENV/bin/pip" install -q -r "$APP/server/requirements-ml.txt" || return 1
+  "$SYSTEMCTL" restart iris || return 1
+}
+
+# Put the previous commit and IRIS_COMMIT back, restart, check health, and exit non-zero.
+# Signals are ignored meanwhile so a second kill cannot leave the box half rolled back.
+rollback() {
+  trap '' HUP INT TERM
+  log "$1; rolling back to $OLD_SHORT"
+  if git -C "$APP" checkout -q -f --detach "$OLD_SHA" &&
+    set_commit_line "$OLD_LINE" &&
+    install_and_restart && wait_health; then
+    die "deploy of $NEW_SHORT failed; rolled back to $OLD_SHORT"
+  fi
+  die "deploy of $NEW_SHORT failed and ROLLBACK ALSO FAILED on $OLD_SHORT; see: journalctl -u iris -n 100"
 }
 
 { [ $# -eq 1 ] && [ -n "$1" ]; } || die "Usage: $0 <ref>   (branch, tag or commit to deploy)"
 REF="$1"
+
+# One update at a time. The lock is held on fd 9 until this script exits.
+exec 9>"$LOCK_FILE"
+flock -n 9 || die "another update is already running (lock $LOCK_FILE)"
 
 OLD_SHA="$(git -C "$APP" rev-parse --verify 'HEAD^{commit}')"
 OLD_SHORT="$(git -C "$APP" rev-parse --short "$OLD_SHA")"
@@ -125,17 +168,13 @@ if [ "$NEW_SHA" = "$OLD_SHA" ]; then
 fi
 
 log "deploying $NEW_SHORT (was $OLD_SHORT)"
-git -C "$APP" checkout -q -f --detach "$NEW_SHA"
-set_commit_line "IRIS_COMMIT=$NEW_SHORT"
-if install_and_restart && wait_health; then
+# From here a kill (dropped SSH session, Ctrl-C) rolls back instead of leaving the new commit.
+trap 'rollback "interrupted"' HUP INT TERM
+if git -C "$APP" checkout -q -f --detach "$NEW_SHA" &&
+  set_commit_line "IRIS_COMMIT=$NEW_SHORT" &&
+  install_and_restart && wait_health; then
+  trap - HUP INT TERM
   log "ready, auth on (commit $NEW_SHORT)"
   exit 0
 fi
-
-log "deploy of $NEW_SHORT failed; rolling back to $OLD_SHORT"
-git -C "$APP" checkout -q -f --detach "$OLD_SHA"
-set_commit_line "$OLD_LINE"
-if install_and_restart && wait_health; then
-  die "deploy of $NEW_SHORT failed; rolled back to $OLD_SHORT"
-fi
-die "deploy of $NEW_SHORT failed and ROLLBACK ALSO FAILED on $OLD_SHORT; see: journalctl -u iris -n 100"
+rollback "deploy of $NEW_SHORT failed"
