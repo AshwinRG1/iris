@@ -6,10 +6,12 @@ fastapi==0.143.3
 h11==0.16.0
 idna==3.20
 opentelemetry-api==1.45.1
-pydantic==2.14.1
+pillow==13.0.0
 pydantic-settings==2.16.0
+pydantic==2.14.1
 pydantic_core==2.50.1
 python-dotenv==1.2.4
+python-multipart==0.0.32
 starlette==1.8.0
 typing-inspection==0.4.4
 typing_extensions==4.16.0

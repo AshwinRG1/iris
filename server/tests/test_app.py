@@ -1,15 +1,12 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
+from conftest import FakeDetector
 from fastapi import Depends
 from fastapi.testclient import TestClient
 
 from config import Settings
 from main import Deps, create_app, get_deps
-
-
-class FakeDetector:
-    name = "fake"
 
 
 class FakeDescriber:
