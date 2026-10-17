@@ -1,4 +1,5 @@
 import AVFoundation
+import Dispatch
 import Foundation
 import Observation
 import UIKit
@@ -230,8 +231,12 @@ final class FrameUploader {
 
       do {
         let boundary = "Iris-\(UUID().uuidString)"
+        // A plain Task inherits this uploader's MainActor. Keep resizing and
+        // JPEG encoding in a detached task so the preview can render at 24 fps.
         let preparation = Task.detached(priority: .utility) {
-          try Self.multipartBody(for: image, boundary: boundary)
+          try autoreleasepool {
+            try Self.multipartBody(for: image, boundary: boundary)
+          }
         }
         let body = try await withTaskCancellationHandler {
           try await preparation.value
@@ -448,6 +453,7 @@ final class FrameUploader {
   /// Runs off the main actor, only for admitted frames. Drawing normalizes UIImage
   /// orientation, and scale=1 ensures 640 *pixels* even on Retina displays.
   nonisolated private static func multipartBody(for image: UIImage, boundary: String) throws -> Data {
+    dispatchPrecondition(condition: .notOnQueue(.main))
     try Task.checkCancellation()
     let size = image.size
     guard size.width > 0, size.height > 0, size.width.isFinite, size.height.isFinite else {

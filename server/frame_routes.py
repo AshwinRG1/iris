@@ -2,9 +2,10 @@
 
 import asyncio
 import io
+import logging
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request
 from PIL import Image
 from pydantic import BaseModel
 
@@ -13,9 +14,15 @@ from auth import require_key_header
 from deps import Deps, Runtime, get_deps, get_runtime
 from detector import Detector
 from domain import Detection, Side
+from form_part import MalformedForm, read_part
 from store import Snapshot, event_json
 
 router = APIRouter()
+log = logging.getLogger("iris")
+
+
+class ErrorDetail(BaseModel):
+    detail: str
 
 
 class DetectionOut(BaseModel):
@@ -54,15 +61,43 @@ def _decode_and_detect(detector: Detector, jpeg: bytes) -> list[Detection]:
     return detector.detect(image)
 
 
-@router.post("/frame", dependencies=[Depends(require_key_header)])
+_FRAME_BODY = {
+    "requestBody": {
+        "required": True,
+        "content": {
+            "multipart/form-data": {
+                "schema": {
+                    "type": "object",
+                    "properties": {"file": {"type": "string", "format": "binary"}},
+                    "required": ["file"],
+                }
+            }
+        },
+    }
+}
+
+
+@router.post(
+    "/frame",
+    dependencies=[Depends(require_key_header)],
+    openapi_extra=_FRAME_BODY,
+    responses={code: {"model": ErrorDetail} for code in (400, 401, 413, 422, 503)},
+)
 async def frame(
-    file: UploadFile,
+    request: Request,
     deps: Annotated[Deps, Depends(get_deps)],
     runtime: Annotated[Runtime, Depends(get_runtime)],
 ) -> FrameReply:
     if not runtime.ready:
         raise HTTPException(status_code=503, detail="model not ready")
-    jpeg = await file.read()
+    try:
+        # The body streams through BodyLimitMiddleware, so this read is bounded.
+        jpeg = await read_part(request.headers.get("content-type", ""), request.stream(), "file")
+    except MalformedForm as e:
+        log.info("422 on /frame: %s", e)  # the reason never holds request bytes
+        raise HTTPException(
+            status_code=422, detail="request is not a valid multipart upload with a file part"
+        ) from e
     # Arrival time (the body is in), not completion time: the policy orders frames by arrival.
     started = deps.clock.now_ms()
     try:
@@ -83,7 +118,7 @@ async def frame(
     )
     runtime.stats.record(started, reply.server_ms)
     at = deps.wall_clock.now()
-    runtime.latest = Snapshot(runtime.last_frame_id, started, at, jpeg, tuple(kept))
+    runtime.latest = Snapshot(runtime.last_frame_id, deps.clock.now_ms(), at, jpeg, tuple(kept))
     runtime.frame_log.append({"at": at.isoformat(), **reply.model_dump()})
     if alert is not None:
         event = runtime.events.add(alert.t_ms, at, alert.hit.side, alert.hit.conf)
@@ -113,6 +148,7 @@ async def health(
     runtime: Annotated[Runtime, Depends(get_runtime)],
 ) -> Health:
     info = runtime.model_info
+    now_ms = deps.clock.now_ms()
     return Health(
         ready=runtime.ready,
         detector=runtime.name,
@@ -124,7 +160,7 @@ async def health(
         class_names=None if info.class_names is None else list(info.class_names),
         fallback=info.fallback,
         commit=deps.settings.commit,
-        fps=runtime.stats.fps(deps.clock.now_ms()),
-        server_ms_p50=runtime.stats.server_ms_percentile(0.50),
-        server_ms_p95=runtime.stats.server_ms_percentile(0.95),
+        fps=runtime.stats.fps(now_ms),
+        server_ms_p50=runtime.stats.server_ms_percentile(0.50, now_ms),
+        server_ms_p95=runtime.stats.server_ms_percentile(0.95, now_ms),
     )

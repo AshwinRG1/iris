@@ -1,7 +1,7 @@
 import io
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -113,3 +113,36 @@ class SteppingWallClock:
     def now(self) -> datetime:
         self.t += timedelta(seconds=1)
         return self.t
+
+
+CONTRACT = Path(__file__).resolve().parents[2] / "docs" / "contract"
+
+
+class SlowLoad(FakeDetector):
+    """load() blocks until `release` is set, so a test can look at the loading state."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.release = threading.Event()
+
+    def load(self) -> Loaded:
+        self.release.wait(30)
+        return super().load()
+
+
+@pytest.fixture
+def slow() -> Iterator[SlowLoad]:
+    d = SlowLoad()
+    yield d
+    d.release.set()  # always, so a failing test never leaves the load thread waiting
+
+
+class BrokenLoad(FakeDetector):
+    """load() raises `error`; the default message stands in for a missing weights file."""
+
+    def __init__(self, error: Exception | None = None) -> None:
+        super().__init__()
+        self.error = error or RuntimeError("weights missing")
+
+    def load(self) -> Loaded:
+        raise self.error

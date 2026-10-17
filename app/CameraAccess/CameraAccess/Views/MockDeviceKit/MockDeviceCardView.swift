@@ -130,10 +130,28 @@ struct MockDeviceCardView: View {
               onBackCamera: { viewModel.setCameraFeed(.back) },
               onVideoFile: { showingVideoPicker = true }
             )
+            .disabled(viewModel.isPreparingVideo)
             .sheet(isPresented: $showingVideoPicker) {
               MediaPickerView(mode: .video) { url, _ in
                 viewModel.selectVideo(from: url)
               }
+            }
+
+            MockDeviceKitButton("Load sample video (720p)") {
+              viewModel.loadSampleVideo()
+            }
+            .disabled(viewModel.isPreparingVideo)
+            .accessibilityIdentifier("loadSampleVideo")
+
+            if viewModel.isPreparingVideo {
+              HStack(spacing: 12) {
+                ProgressView("Preparing video…", value: viewModel.videoPreparationProgress)
+                  .font(.caption)
+                Button("Cancel", role: .cancel) {
+                  viewModel.cancelVideoPreparation()
+                }
+              }
+              .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             // Captured image control — hidden when a camera source (front/back) is selected
@@ -166,6 +184,11 @@ struct MockDeviceCardView: View {
       Button("Cancel", role: .cancel) {}
     } message: {
       Text("Camera access was denied. Enable it in Settings to use the camera source.")
+    }
+    .alert("Couldn't load video", isPresented: $viewModel.showVideoError) {
+      Button("OK", role: .cancel) {}
+    } message: {
+      Text(viewModel.videoErrorMessage)
     }
   }
 }
@@ -210,7 +233,5 @@ private struct CameraSourcePicker: View {
     }
   }
 }
-
-// Replace this with PhotosPicker once we're on iOS 16 or newer
 
 #endif

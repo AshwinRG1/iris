@@ -135,6 +135,20 @@ struct FrameUploaderTests {
     #expect(UploadProtocol.requests.count == 3)
   }
 
+  @Test func jpegPreparationDrawsOffTheMainThread() async throws {
+    let harness = Harness(replies: [.response(200, try fixture("frame-quiet"))])
+    let uploader = harness.uploader
+    let image = EncodingProbeImage(cgImage: try #require(testImage().cgImage))
+    uploader.isEnabled = true
+    uploader.setStreaming(true)
+    uploader.submit(image)
+    try await waitUntil { !uploader.isUploading }
+
+    #expect(image.drewOnMainThread == false)
+    #expect(UploadProtocol.requests.count == 1)
+    #expect(uploader.lastError == nil)
+  }
+
   @Test func failedVideoDecodesSkipUploadsAndRecoverWithoutRestarting() async throws {
     let frames = try hevcFrames()
     let decoder = VideoFrameDecoder()
@@ -637,6 +651,17 @@ private func testImage() -> UIImage {
   return UIGraphicsImageRenderer(size: CGSize(width: 1600, height: 900), format: format).image { context in
     UIColor.blue.setFill()
     context.fill(CGRect(x: 0, y: 0, width: 1600, height: 900))
+  }
+}
+
+private final class EncodingProbeImage: UIImage, @unchecked Sendable {
+  private let drawThread = OSAllocatedUnfairLock<Bool?>(initialState: nil)
+
+  var drewOnMainThread: Bool? { drawThread.withLock { $0 } }
+
+  override func draw(in rect: CGRect) {
+    drawThread.withLock { $0 = Thread.isMainThread }
+    super.draw(in: rect)
   }
 }
 

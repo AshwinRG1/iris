@@ -121,7 +121,7 @@ git -C "$APP" checkout -q -f "$IRIS_REF"
 if git -C "$APP" show-ref -q --verify "refs/remotes/origin/$IRIS_REF"; then
   git -C "$APP" reset -q --hard "origin/$IRIS_REF"
 fi
-COMMIT="$(git -C "$APP" rev-parse --short HEAD)"
+COMMIT="$(git -C "$APP" rev-parse --short=12 HEAD)"
 log "deploying commit $COMMIT"
 
 log "venv (CPU torch first)"

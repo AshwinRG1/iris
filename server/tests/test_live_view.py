@@ -11,6 +11,7 @@ from conftest import (
     FakeWallClock,
     SettableClock,
     SteppingWallClock,
+    TimedDetector,
     det,
     jpeg_bytes,
 )
@@ -365,3 +366,76 @@ def test_page_sends_the_key_as_a_header_never_to_health() -> None:
     assert '"X-Iris-Key"' in html
     assert "history.replaceState" in html
     assert "X-Frame-Id" in html
+
+
+# --- stale boxes (ticket 12)
+
+
+def _latest_after(age_ms: int) -> dict[str, Any]:
+    clock = SettableClock(1000)
+    with _client([[det()]], clock=clock) as c:
+        _post(c)
+        clock.t = 1000 + age_ms
+        body: dict[str, Any] = c.get("/latest").json()
+    return body
+
+
+def test_latest_is_not_stale_just_after_a_frame_or_at_exactly_three_seconds() -> None:
+    for body in (_latest_after(0), _latest_after(3000)):
+        assert body["stale"] is False
+        assert len(body["detections"]) == 1
+
+
+def test_latest_past_three_seconds_is_stale_with_no_boxes_but_keeps_its_frame() -> None:
+    body = _latest_after(3001)
+    assert body["stale"] is True
+    assert body["detections"] == []
+    assert body["frame_id"] == 1
+    assert body["at"] == "2026-01-01T00:00:00Z"
+    assert body["age_ms"] == 3001
+
+
+def test_latest_before_any_frame_is_not_stale() -> None:
+    with _client() as c:
+        assert c.get("/latest").json()["stale"] is False
+
+
+def test_page_stops_drawing_boxes_and_marks_a_stale_frame() -> None:
+    with _client() as c:
+        html = c.get("/").text
+    assert "latest.stale" in html
+    assert "stale (no new frames)" in html
+    assert "innerHTML" not in html
+    # The stale early return that skips the boxes.
+    assert "if (latest.stale) return;" in html
+    # A new bitmap is owned by lastBitmap before drawing; the old one is closed once.
+    assert "lastBitmap.close();" in html
+    assert html.index("lastBitmap = bitmap;") < html.index("draw(bitmap, latest);")
+    # A stale redraw reuses the kept image only when it is this frame's.
+    assert "lastBitmapFrameId === latest.frame_id" in html
+    # A restart resets the page's frame bookkeeping.
+    assert "latest.boot_id !== frameBootId" in html
+    assert "drawnFrameId = 0;" in html
+
+
+def test_a_slow_inference_still_gives_a_fresh_latest() -> None:
+    # Age counts from when the result was published, not from arrival.
+    clock = SettableClock(1000)
+    detector = TimedDetector(clock)
+    detector.cost_ms = 4000
+    app = create_app(detector, FakeDescriber(), clock, FakeWallClock(), Settings())
+    with TestClient(app) as c:
+        _post(c)
+        body = c.get("/latest").json()
+        assert body["stale"] is False
+        assert body["age_ms"] == 0
+        assert body["frame_id"] == 1
+        clock.t += 3001
+        assert c.get("/latest").json()["stale"] is True
+
+
+def test_latest_boot_id_matches_events_and_differs_between_instances() -> None:
+    with _client() as a, _client() as b:
+        first = a.get("/latest").json()["boot_id"]
+        assert first == a.get("/events").json()["boot_id"]
+        assert first != b.get("/latest").json()["boot_id"]
