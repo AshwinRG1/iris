@@ -503,6 +503,36 @@ check "hangup: update log says rolled back" log_says "rolled back to ${PREV_SHA:
 check "hangup: key not in update log" no_key_in_log
 end_world
 
+check "hangup: fresh update log is mode 600" eq "$(mode_of "$W/update.log")" 0o600
+
+# --- stdout is a pipe whose reader goes away (ssh without a pty dropped): still rolls back
+new_world 22
+cp "$ENVF" "$W/env.before"
+PREV_SHA="$(head_of)"
+reader_that_leaves() { # wait until the service was restarted, then exit and close the pipe
+  local _
+  for _ in $(seq 1 100); do
+    [ "$(restarts)" -ge 1 ] && break
+    sleep 0.1
+  done
+  sleep 0.5
+}
+HEALTH_T=4
+upd_args
+set +e
+"${UPD[@]}" bash "$UPDATE" bad 2>&1 | reader_that_leaves
+RC=${PIPESTATUS[0]}
+set -e
+HEALTH_T=""
+check "closed pipe: exits non-zero" ne "$RC" 0
+check "closed pipe: not killed by SIGPIPE" ne "$RC" 141
+check "closed pipe: previous commit checked out" eq "$(head_of)" "$PREV_SHA"
+check "closed pipe: previous IRIS_COMMIT restored" eq "$(env_line IRIS_COMMIT)" 0a0a0a0
+check "closed pipe: two restarts (deploy and rollback)" eq "$(restarts)" 2
+check "closed pipe: update log says rolled back" log_says "rolled back to ${PREV_SHA:0:7}"
+check "closed pipe: key not in update log" no_key_in_log
+end_world
+
 # --- TERM during the env rewrite leaves no temp copy of the key
 new_world 15
 mkdir -p "$W/slow"

@@ -53,9 +53,16 @@ die() {
   printf '%s\n' "$*" >&2 || true
   exit 1
 }
-to_update_log() { exec >>"$UPDATE_LOG" 2>&1 || true; }
+# The log is created 0600 (only that file; a global umask would change the checkout's modes).
+to_update_log() {
+  (umask 077 && : >>"$UPDATE_LOG") 2>/dev/null || true
+  exec >>"$UPDATE_LOG" 2>&1 || true
+}
 cleanup_env_tmp() { [ -z "${ENV_TMP:-}" ] || rm -f "$ENV_TMP"; }
 trap cleanup_env_tmp EXIT
+# The output pipe closed (ssh without a pty dropped, `| tee` interrupted): keep going and report to
+# the log. Not `trap '' PIPE`: on bash 3.2 the failed write's buffered bytes leaked into a later $(...).
+trap to_update_log PIPE
 
 # Reads a /health body on stdin; $1 is the expected short commit. Prints ready, authoff,
 # error:<load_error>, mismatch:<reported commit or "none"> or wait.
