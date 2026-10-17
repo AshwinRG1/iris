@@ -1,0 +1,7 @@
+{
+  "detections": [
+    {"label": "person", "conf": 0.71, "side": "left"},
+    {"label": "person", "conf": 0.42, "side": "ahead"}
+  ],
+  "alert": "possible person, left"
+}
