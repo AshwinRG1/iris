@@ -58,6 +58,17 @@ server's base URL (without `/frame`) and its key, if one is required, then enabl
 off each time the app launches. Start the session and live preview using either
 glasses or the Mock Device Kit to send frames.
 
+For a development server, use a Debug build and enter
+`http://<server-ip>:8000` (with your server's actual port). Debug builds allow HTTP
+to numeric IPv4 and IPv6 addresses through ATS range exceptions; no personal IP
+is embedded in the project. The address you enter stays in the app's local
+settings. Rebuild and reinstall after changing the ATS configuration. Release
+builds omit these HTTP exceptions; use your HTTPS server URL for Release.
+
+The Info.plist is preprocessed by Xcode: `IRIS_DEBUG_HTTP` is defined only in the
+app target's Debug configuration. The CIDR entries describe address ranges and
+do not identify a particular server.
+
 The app sends a fresh 640-pixel-wide JPEG at most every 400 ms, with one request at
 a time and a 1.5-second timeout. Errors appear in Iris status and uploads retry on
 subsequent frames. Pausing or stopping the preview cancels pending uploads and
