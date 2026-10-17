@@ -15,7 +15,8 @@ from deps import Clock, Deps, Describer, Runtime, WallClock, get_deps
 from detector import DetectFn, Detector, FallbackDetector, YoloDetector, ZeroShotDetector
 from frame_routes import router as frame_router
 from limits import BodyLimitMiddleware
-from store import FrameLog
+from live_routes import router as live_router
+from store import JsonlLog
 
 __all__ = ["Deps", "app", "create_app", "get_deps"]
 
@@ -65,7 +66,8 @@ def create_app(
     app.state.deps = Deps(detector, describer, clock, wall_clock, settings)
     app.state.runtime = Runtime(
         device=detector.device,
-        frame_log=FrameLog(Path(settings.log_dir) / "frames.jsonl"),
+        frame_log=JsonlLog(Path(settings.log_dir) / "frames.jsonl", "frames"),
+        event_log=JsonlLog(Path(settings.log_dir) / "events.jsonl", "events"),
         tuning=settings.tuning,
         name=detector.name,
     )
@@ -73,6 +75,7 @@ def create_app(
         log.warning("IRIS_API_KEY is not set; authentication is off")
     app.add_middleware(BodyLimitMiddleware, max_bytes=settings.max_upload_bytes)
     app.include_router(frame_router)
+    app.include_router(live_router)
     return app
 
 
