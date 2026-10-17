@@ -43,11 +43,19 @@ def merge(dataset_dirs: list[Path], out_dir: Path, classes: list[str]):
         src_classes: list[str] = meta.get("names", [])
         prefix = ds_dir.name
 
-        for split in ("train", "val"):
-            img_src = ds_dir / "images" / split
-            lbl_src = ds_dir / "labels" / split
-            if not img_src.exists():
+        # Support both layouts: images/train/ and train/images/
+        # Also map "valid" -> "val"
+        split_map = {"train": "train", "val": "val", "valid": "val"}
+        for src_split, out_split in split_map.items():
+            if (ds_dir / "images" / src_split).exists():
+                img_src = ds_dir / "images" / src_split
+                lbl_src = ds_dir / "labels" / src_split
+            elif (ds_dir / src_split / "images").exists():
+                img_src = ds_dir / src_split / "images"
+                lbl_src = ds_dir / src_split / "labels"
+            else:
                 continue
+            split = out_split
             for img in img_src.iterdir():
                 stem = f"{prefix}_{img.stem}"
                 shutil.copy2(img, out_dir / "images" / split / (stem + img.suffix))
