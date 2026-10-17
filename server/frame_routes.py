@@ -77,7 +77,7 @@ async def frame(
     runtime.last_frame_id += 1
     reply = FrameReply(
         detections=[DetectionOut(label=d.label, conf=d.conf, side=d.side) for d in kept],
-        alert=alert,
+        alert=alert.text if alert else None,
         frame_id=runtime.last_frame_id,
         server_ms=deps.clock.now_ms() - started,
     )
@@ -86,9 +86,7 @@ async def frame(
     runtime.latest = Snapshot(runtime.last_frame_id, started, at, jpeg, tuple(kept))
     runtime.frame_log.append({"at": at.isoformat(), **reply.model_dump()})
     if alert is not None:
-        # The policy alerts on the strongest hit; the event names the same one.
-        best = max((d for d in kept if d.conf >= runtime.tuning.conf_alert), key=lambda d: d.conf)
-        event = runtime.events.add(started, at, best.side, best.conf)
+        event = runtime.events.add(alert.t_ms, at, alert.hit.side, alert.hit.conf)
         runtime.event_log.append(event_json(event))
     return reply
 

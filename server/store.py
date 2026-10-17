@@ -48,13 +48,15 @@ class LatencyStats:
         return nearest_rank([ms for _, ms in self._frames], q)
 
 
-class FrameLog:
-    """One JSON line per record (frames and events logs). A bad disk never fails a frame.
+class JsonlLog:
+    """One JSON line per record; `name` ("frames", "events") labels its warnings.
+
+    A failing disk never fails a frame.
 
     After a failure it warns once, then skips writes for 30 s before trying again.
     """
 
-    def __init__(self, path: Path, name: str = "frames") -> None:
+    def __init__(self, path: Path, name: str) -> None:
         self._path = path
         self._name = name
         self._dir_ready = False
@@ -99,7 +101,11 @@ class Snapshot:
 
 @dataclass(frozen=True)
 class Event:
-    """One fired alert. A later description replaces the event, it does not edit it."""
+    """One fired alert.
+
+    `description` is reserved for ticket 08 and is always None for now; that ticket will
+    replace the event with a described copy instead of editing it.
+    """
 
     id: int
     t_ms: int

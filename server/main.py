@@ -16,7 +16,7 @@ from detector import DetectFn, Detector, FallbackDetector, YoloDetector, ZeroSho
 from frame_routes import router as frame_router
 from limits import BodyLimitMiddleware
 from live_routes import router as live_router
-from store import FrameLog
+from store import JsonlLog
 
 __all__ = ["Deps", "app", "create_app", "get_deps"]
 
@@ -66,8 +66,8 @@ def create_app(
     app.state.deps = Deps(detector, describer, clock, wall_clock, settings)
     app.state.runtime = Runtime(
         device=detector.device,
-        frame_log=FrameLog(Path(settings.log_dir) / "frames.jsonl"),
-        event_log=FrameLog(Path(settings.log_dir) / "events.jsonl", "events"),
+        frame_log=JsonlLog(Path(settings.log_dir) / "frames.jsonl", "frames"),
+        event_log=JsonlLog(Path(settings.log_dir) / "events.jsonl", "events"),
         tuning=settings.tuning,
         name=detector.name,
     )

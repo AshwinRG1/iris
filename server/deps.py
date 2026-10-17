@@ -1,5 +1,6 @@
 """Shared dependencies and runtime state. Mutated only on the event loop."""
 
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -10,7 +11,7 @@ from fastapi import Request
 from config import Settings
 from detector import NO_MODEL, Detector, ModelInfo
 from domain import PolicyState, Tuning
-from store import EventRing, FrameLog, LatencyStats, Snapshot
+from store import EventRing, JsonlLog, LatencyStats, Snapshot
 
 
 # Placeholder: moves to the describer module in a later ticket.
@@ -38,8 +39,8 @@ class Deps:
 @dataclass
 class Runtime:
     device: str
-    frame_log: FrameLog
-    event_log: FrameLog
+    frame_log: JsonlLog
+    event_log: JsonlLog
     tuning: Tuning
     # Set on the loop from load()'s result. /health reads these, never the detector.
     name: str = ""
@@ -50,6 +51,8 @@ class Runtime:
     policy: PolicyState = field(default_factory=PolicyState)
     stats: LatencyStats = field(default_factory=LatencyStats)
     latest: Snapshot | None = None
+    # Changes on every restart, so a page can tell its event ids are from an old run.
+    boot_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     events: EventRing = field(default_factory=EventRing)
     # The single inference slot: one worker thread, so the model is never used concurrently.
     slot: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor(max_workers=1))

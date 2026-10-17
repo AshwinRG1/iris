@@ -17,6 +17,8 @@
   .hit { color: #ff5a4f; }
   .dim { color: #9aa; }
   #legend i { display: inline-block; width: 10px; height: 10px; margin: 0 4px 0 10px; }
+  .hitkey { background: #ff5a4f; }
+  .weakkey { background: #7ec8ff; }
 </style>
 </head>
 <body>
@@ -28,7 +30,7 @@
   <span>p95 <b id="p95">-</b> ms</span>
   <span>last frame <b id="age">-</b> s ago</span>
   <span>tuning <b id="tuning">-</b></span>
-  <span id="legend"><i style="background:#ff5a4f"></i>hit<i style="background:#7ec8ff"></i>below conf_alert</span>
+  <span id="legend"><i class="hitkey"></i>hit<i class="weakkey"></i>below conf_alert</span>
 </div>
 <main>
   <canvas id="view" width="640" height="480"></canvas>
@@ -37,22 +39,33 @@
 <script>
 "use strict";
 // Everything the server sends goes onto the page through textContent or canvas text.
-const key = new URLSearchParams(location.search).get("key");
+// The key comes from the address once, is kept in memory, and is then wiped from the URL.
+const key = (() => {
+  let k = new URLSearchParams(location.search).get("key");
+  try {
+    if (k) sessionStorage.setItem("iris-key", k);
+    else k = sessionStorage.getItem("iris-key");
+  } catch (e) { /* storage may be blocked; the key stays in memory */ }
+  if (location.search) history.replaceState(null, "", location.pathname);
+  return k;
+})();
 const canvas = document.getElementById("view");
 const ctx = canvas.getContext("2d");
 const HIT = "#ff5a4f";
 const WEAK = "#7ec8ff";
+const KEPT_EVENTS = 200;
 let lastEventId = 0;
+let bootId = null;
+let drawnFrameId = 0;
 
-function url(path, extra) {
-  const q = new URLSearchParams(extra || {});
-  if (key) q.set("key", key);
-  const s = q.toString();
-  return s ? path + "?" + s : path;
+// The key goes in a header, never in a URL, and never to /health.
+function get(path) {
+  const headers = key && !path.startsWith("/health") ? { "X-Iris-Key": key } : {};
+  return fetch(path, { cache: "no-store", headers });
 }
 
-async function getJson(path, extra) {
-  const r = await fetch(url(path, extra), { cache: "no-store" });
+async function getJson(path) {
+  const r = await get(path);
   if (!r.ok) throw new Error(path + " " + r.status);
   return r.json();
 }
@@ -69,8 +82,7 @@ function draw(bitmap, latest) {
   ctx.font = Math.max(12, Math.round(canvas.width / 40)) + "px system-ui, sans-serif";
   ctx.textBaseline = "bottom";
   for (const d of latest.detections) {
-    const hit = d.conf >= latest.tuning.conf_alert;
-    const color = hit ? HIT : WEAK;
+    const color = d.conf >= latest.tuning.conf_alert ? HIT : WEAK;
     const x = d.box.x1 * canvas.width;
     const y = d.box.y1 * canvas.height;
     ctx.strokeStyle = color;
@@ -82,15 +94,20 @@ function draw(bitmap, latest) {
 
 async function pollFrame() {
   try {
-    const [latest, jpg] = await Promise.all([
-      getJson("/latest"),
-      fetch(url("/latest.jpg", { t: Date.now() }), { cache: "no-store" }),
-    ]);
+    const latest = await getJson("/latest");
     setText("age", latest.age_ms === null ? null : (latest.age_ms / 1000).toFixed(1));
     const t = latest.tuning;
     setText("tuning", "alert>=" + t.conf_alert + " " + t.needed + "/" + t.window +
       " cooldown " + t.cooldown_ms / 1000 + "s repeat " + t.same_side_repeat_ms / 1000 + "s");
-    if (jpg.ok) draw(await createImageBitmap(await jpg.blob()), latest);
+    if (latest.frame_id !== 0 && latest.frame_id !== drawnFrameId) {
+      const r = await get("/latest.jpg");
+      // Draw only an image that is this /latest's frame; otherwise the next poll retries.
+      if (r.ok && r.headers.get("X-Frame-Id") === String(latest.frame_id)) {
+        const bitmap = await createImageBitmap(await r.blob(), { imageOrientation: "none" });
+        try { draw(bitmap, latest); } finally { bitmap.close(); }
+        drawnFrameId = latest.frame_id;
+      }
+    }
   } catch (e) {
     setText("age", "offline");
   }
@@ -109,38 +126,55 @@ async function pollHealth() {
   }
 }
 
+function addEvent(log, e) {
+  const li = document.createElement("li");
+  const head = document.createElement("span");
+  head.className = "hit";
+  head.textContent = e.side + " " + Number(e.conf).toFixed(2);
+  const at = document.createElement("span");
+  at.className = "dim";
+  at.textContent = " " + e.at;
+  li.append(head, at);
+  if (e.description) {
+    const d = document.createElement("div");
+    d.textContent = e.description;
+    li.append(d);
+  }
+  log.prepend(li);
+  lastEventId = Math.max(lastEventId, e.id);
+}
+
 async function pollEvents() {
   try {
-    const events = await getJson("/events", { since: lastEventId });
     const log = document.getElementById("log");
-    for (const e of events) {
-      const li = document.createElement("li");
-      const head = document.createElement("span");
-      head.className = "hit";
-      head.textContent = e.side + " " + Number(e.conf).toFixed(2);
-      const at = document.createElement("span");
-      at.className = "dim";
-      at.textContent = " " + e.at;
-      li.append(head, at);
-      if (e.description) {
-        const d = document.createElement("div");
-        d.textContent = e.description;
-        li.append(d);
+    let reply = await getJson("/events?since=" + lastEventId);
+    if (reply.boot_id !== bootId) {
+      // The server restarted, so its ids started over: start over too.
+      const restarted = bootId !== null;
+      bootId = reply.boot_id;
+      if (restarted) {
+        log.replaceChildren();
+        lastEventId = 0;
+        reply = await getJson("/events?since=0");
       }
-      log.prepend(li);
-      lastEventId = Math.max(lastEventId, e.id);
     }
+    for (const e of reply.events) addEvent(log, e);
+    while (log.children.length > KEPT_EVENTS) log.lastElementChild.remove();
   } catch (e) {
     /* the next poll retries */
   }
 }
 
-setInterval(pollFrame, 300);
-setInterval(pollEvents, 1000);
-setInterval(pollHealth, 1000);
-pollFrame();
-pollEvents();
-pollHealth();
+// One request at a time: the next poll starts a fixed delay after the last one finishes.
+function every(fn, delayMs) {
+  const tick = async () => {
+    try { await fn(); } finally { setTimeout(tick, delayMs); }
+  };
+  tick();
+}
+every(pollFrame, 300);
+every(pollEvents, 1000);
+every(pollHealth, 1000);
 </script>
 </body>
 </html>
