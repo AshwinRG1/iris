@@ -87,7 +87,9 @@ final class FrameUploader {
   var serverURL: String {
     didSet {
       guard serverURL != oldValue else { return }
-      defaults.set(serverURL, forKey: "iris.serverURL")
+      // Keep the editing text intact (including a partially typed scheme), but
+      // persist and use the normalized base so a pasted /frame URL also works.
+      defaults.set(Self.normalizedServerURL(serverURL), forKey: "iris.serverURL")
       invalidateCurrentFrame()
       invalidateServerHealth()
     }
@@ -136,6 +138,7 @@ final class FrameUploader {
 
   @ObservationIgnored private let defaults: UserDefaults
   @ObservationIgnored private let session: URLSession
+  @ObservationIgnored private let healthSession: URLSession
   @ObservationIgnored private let speaker: any FrameAlertSpeaking
   @ObservationIgnored private let now: () -> TimeInterval
   @ObservationIgnored private var uploadTask: Task<Void, Never>?
@@ -155,26 +158,33 @@ final class FrameUploader {
   init(
     defaults: UserDefaults = .standard,
     session: URLSession? = nil,
+    healthSession: URLSession? = nil,
     speaker: any FrameAlertSpeaking = FrameAlertSpeaker(),
     now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
   ) {
     self.defaults = defaults
-    self.serverURL = defaults.string(forKey: "iris.serverURL") ?? ""
+    let savedURL = defaults.string(forKey: "iris.serverURL") ?? ""
+    self.serverURL = Self.normalizedServerURL(savedURL)
     self.serverKey = defaults.string(forKey: "iris.serverKey") ?? ""
     self.speaker = speaker
     self.now = now
 
-    if let session {
-      self.session = session
-    } else {
-      let configuration = URLSessionConfiguration.ephemeral
-      configuration.timeoutIntervalForRequest = Self.timeout
-      configuration.timeoutIntervalForResource = Self.timeout
-      configuration.waitsForConnectivity = false
-      configuration.httpMaximumConnectionsPerHost = 1
-      configuration.urlCache = nil
-      self.session = URLSession(configuration: configuration)
+    self.session = session ?? Self.makeSession()
+    // A slow upload must not consume the health check's 1.5-second window.
+    self.healthSession = healthSession ?? Self.makeSession()
+    if serverURL != savedURL {
+      defaults.set(serverURL, forKey: "iris.serverURL")
     }
+  }
+
+  private static func makeSession() -> URLSession {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.timeoutIntervalForRequest = Self.timeout
+    configuration.timeoutIntervalForResource = Self.timeout
+    configuration.waitsForConnectivity = false
+    configuration.httpMaximumConnectionsPerHost = 1
+    configuration.urlCache = nil
+    return URLSession(configuration: configuration)
   }
 
   isolated deinit {
@@ -290,7 +300,7 @@ final class FrameUploader {
     }
 
     let requestGeneration = healthGeneration
-    let session = session
+    let session = healthSession
     isCheckingHealth = true
     lastHealthError = nil
     healthTask = Task { [weak self] in
@@ -378,8 +388,21 @@ final class FrameUploader {
     return key.unicodeScalars.allSatisfy { (0x20...0x7E).contains($0.value) } ? key : nil
   }
 
+  private static func normalizedServerURL(_ value: String) -> String {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard var components = URLComponents(string: trimmed) else { return trimmed }
+    var path = components.path
+    while path.hasSuffix("/") { path.removeLast() }
+    if path.hasSuffix("/frame") {
+      path.removeLast("/frame".count)
+      while path.hasSuffix("/") { path.removeLast() }
+    }
+    components.path = path
+    return components.string ?? trimmed
+  }
+
   private static func endpoint(_ value: String, path: String) -> URL? {
-    guard let components = URLComponents(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),
+    guard let components = URLComponents(string: normalizedServerURL(value)),
       let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
       let host = components.host, !host.isEmpty,
       components.user == nil, components.password == nil,

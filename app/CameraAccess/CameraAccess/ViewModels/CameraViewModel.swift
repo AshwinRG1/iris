@@ -505,7 +505,8 @@ final class CameraViewModel {
       // keeps writing while the app is backgrounded.
       self.appendVideoFrame(frame)
 
-      // Decode the compressed hvc1 frame for preview off the main actor.
+      // Decode off the main actor. A failed decode yields nil, leaving the preview
+      // in place and skipping uploads until a fresh image is available.
       let previewImage = self.videoFrameDecoder.decode(frame.sampleBuffer)
 
       Task { @MainActor [weak self] in
