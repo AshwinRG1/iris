@@ -65,6 +65,7 @@ class Health(BaseModel):
     detector: str
     device: str
     load_error: str | None
+    commit: str | None
     fps: float
     server_ms_p50: int | None
     server_ms_p95: int | None
@@ -80,6 +81,7 @@ async def health(
         detector=deps.detector.name,
         device=runtime.device,
         load_error=runtime.load_error,
+        commit=deps.settings.commit,
         fps=runtime.stats.fps(deps.clock.now_ms()),
         server_ms_p50=runtime.stats.server_ms_percentile(0.50),
         server_ms_p95=runtime.stats.server_ms_percentile(0.95),
