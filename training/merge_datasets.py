@@ -1,0 +1,93 @@
+"""
+Merge multiple Roboflow YOLO-format exports into data/merged/ with a single class set.
+Each source dataset must contain images/{train,val}, labels/{train,val}, and data.yaml.
+
+Usage:
+    python training/merge_datasets.py --datasets data/rubble data/flood --classes person
+"""
+
+import argparse
+import shutil
+import yaml
+from pathlib import Path
+
+
+def load_yaml(path: Path) -> dict:
+    with open(path) as f:
+        return yaml.safe_load(f)
+
+
+def remap_label_file(src: Path, dst: Path, src_classes: list[str], unified: list[str]):
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for line in src.read_text().splitlines():
+        parts = line.strip().split()
+        if not parts:
+            continue
+        old_id = int(parts[0])
+        class_name = src_classes[old_id]
+        if class_name not in unified:
+            continue
+        new_id = unified.index(class_name)
+        lines.append(f"{new_id} " + " ".join(parts[1:]))
+    dst.write_text("\n".join(lines) + ("\n" if lines else ""))
+
+
+def merge(dataset_dirs: list[Path], out_dir: Path, classes: list[str]):
+    for split in ("train", "val"):
+        (out_dir / "images" / split).mkdir(parents=True, exist_ok=True)
+        (out_dir / "labels" / split).mkdir(parents=True, exist_ok=True)
+
+    for ds_dir in dataset_dirs:
+        meta = load_yaml(ds_dir / "data.yaml")
+        src_classes: list[str] = meta.get("names", [])
+        prefix = ds_dir.name
+
+        for split in ("train", "val"):
+            img_src = ds_dir / "images" / split
+            lbl_src = ds_dir / "labels" / split
+            if not img_src.exists():
+                continue
+            for img in img_src.iterdir():
+                stem = f"{prefix}_{img.stem}"
+                shutil.copy2(img, out_dir / "images" / split / (stem + img.suffix))
+                lbl = lbl_src / (img.stem + ".txt")
+                dst_lbl = out_dir / "labels" / split / (stem + ".txt")
+                if lbl.exists():
+                    remap_label_file(lbl, dst_lbl, src_classes, classes)
+                else:
+                    dst_lbl.write_text("")
+
+    data_yaml = {
+        "path": str(out_dir.resolve()),
+        "train": "images/train",
+        "val": "images/val",
+        "nc": len(classes),
+        "names": classes,
+    }
+    with open(out_dir / "data.yaml", "w") as f:
+        yaml.dump(data_yaml, f, default_flow_style=False)
+
+    print(f"Merged {len(dataset_dirs)} datasets -> {out_dir}")
+    print(f"Classes ({len(classes)}): {classes}")
+    for split in ("train", "val"):
+        n = len(list((out_dir / "images" / split).iterdir()))
+        print(f"  {split}: {n} images")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--datasets", nargs="+", required=True, help="Roboflow dataset dirs")
+    parser.add_argument("--out", default="data/merged", help="Output directory")
+    parser.add_argument("--classes", nargs="+", default=["person"], help="Unified class names (agree with B)")
+    args = parser.parse_args()
+
+    merge(
+        dataset_dirs=[Path(d) for d in args.datasets],
+        out_dir=Path(args.out),
+        classes=args.classes,
+    )
+
+
+if __name__ == "__main__":
+    main()
