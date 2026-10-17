@@ -16,15 +16,14 @@ import os
 
 /// Decompresses HEVC `CMSampleBuffer`s into `UIImage`s for on-screen preview. Not
 /// required for recording (passthrough writes compressed frames directly) — included
-/// to show how to display hvc1 frames. On decode failure (e.g. session invalidation
-/// while backgrounded) it returns the last good frame until a keyframe arrives, so no
-/// corrupt frames reach the UI. Thread-safe — call `decode(_:)` from any thread.
+/// to show how to display hvc1 frames. Returns only freshly decoded images so an old
+/// preview frame cannot be uploaded as live input during recovery. The UI can keep
+/// displaying its existing image. Thread-safe — call `decode(_:)` from any thread.
 final class VideoFrameDecoder: Sendable {
   private struct State {
     var session: VTDecompressionSession?
     var formatDescription: CMFormatDescription?
     var consecutiveFailures: Int = 0
-    var lastGoodImage: UIImage?
     var awaitingKeyframe: Bool = false
   }
 
@@ -37,13 +36,13 @@ final class VideoFrameDecoder: Sendable {
   }
 
   /// Decodes an HEVC sample buffer into a `UIImage`. Creates the decompression session
-  /// lazily and recreates it if the format changes or it goes invalid. On failure,
-  /// returns the last good frame until a keyframe arrives.
+  /// lazily and recreates it if the format changes or it goes invalid. Returns nil
+  /// on failure or while waiting for a keyframe; resumes with the next good image.
   func decode(_ sampleBuffer: CMSampleBuffer) -> UIImage? {
     guard CMSampleBufferGetDataBuffer(sampleBuffer) != nil,
       let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer)
     else {
-      return state.withLockUnchecked { $0.lastGoodImage }
+      return nil
     }
 
     let isKeyframe = sampleBuffer.isHEVCKeyframe()
@@ -103,13 +102,13 @@ final class VideoFrameDecoder: Sendable {
       return (newSession, true)
     }
 
-    // Awaiting a keyframe after (re)creating the session: hold the last good frame.
+    // The preview holds its existing image; callers receive no frame to upload.
     if awaitingKeyframe && !isKeyframe {
-      return state.withLockUnchecked { $0.lastGoodImage }
+      return nil
     }
 
     guard let session else {
-      return state.withLockUnchecked { $0.lastGoodImage }
+      return nil
     }
 
     // The handler runs synchronously on this thread because flags is empty, so capturing
@@ -131,8 +130,9 @@ final class VideoFrameDecoder: Sendable {
     // After 3 consecutive failures, invalidate so the next frame builds a fresh session
     // — tolerates transient errors while still recovering from a persistent one
     // (e.g. a pre-iOS 17 session torn down after backgrounding).
-    if decodeStatus != noErr {
-      return state.withLockUnchecked { state in
+    // A callback error can leave the output empty even when submission succeeded.
+    guard decodeStatus == noErr, let pixelBuffer = outputPixelBuffer else {
+      state.withLockUnchecked { state in
         state.consecutiveFailures += 1
         if state.consecutiveFailures >= 3 {
           if let session = state.session {
@@ -143,8 +143,8 @@ final class VideoFrameDecoder: Sendable {
           state.consecutiveFailures = 0
           state.awaitingKeyframe = true
         }
-        return state.lastGoodImage
       }
+      return nil
     }
 
     state.withLockUnchecked {
@@ -154,10 +154,6 @@ final class VideoFrameDecoder: Sendable {
       }
     }
 
-    guard let pixelBuffer = outputPixelBuffer else {
-      return state.withLockUnchecked { $0.lastGoodImage }
-    }
-
     let cgImage = ciContext.createCGImage(
       CIImage(cvPixelBuffer: pixelBuffer),
       from: CGRect(
@@ -165,11 +161,9 @@ final class VideoFrameDecoder: Sendable {
         width: CVPixelBufferGetWidth(pixelBuffer),
         height: CVPixelBufferGetHeight(pixelBuffer)))
     guard let cgImage else {
-      return state.withLockUnchecked { $0.lastGoodImage }
+      return nil
     }
 
-    let image = UIImage(cgImage: cgImage)
-    state.withLockUnchecked { $0.lastGoodImage = image }
-    return image
+    return UIImage(cgImage: cgImage)
   }
 }

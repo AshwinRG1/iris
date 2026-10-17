@@ -1,4 +1,5 @@
 @testable import CameraAccess
+import CoreMedia
 import Foundation
 import Testing
 import UIKit
@@ -33,6 +34,32 @@ struct FrameUploaderTests {
     let response = try JSONDecoder().decode(FrameResponse.self, from: data)
     #expect(response.detections.first?.label == "new-class")
     #expect(response.detections.first?.side == "above")
+  }
+
+  @Test(arguments: ["http://10.138.20.97:8000", "https://203-0-113-10.nip.io"],
+    ["", "/", "///", "/frame", "/frame/", "///frame///"])
+  func normalizesSavedAndEditedURLsForHealthAndUploads(_ base: String, _ suffix: String) async throws {
+    let input = " \n\(base)\(suffix)\t"
+    let harness = Harness(replies: [
+      .response(200, healthReply()), .response(200, try fixture("frame-quiet")),
+    ], serverURL: input)
+    let uploader = harness.uploader
+    #expect(uploader.serverURL == base, "Previously saved endpoint URLs are migrated on launch")
+    #expect(harness.defaults.string(forKey: "iris.serverURL") == base)
+
+    uploader.serverURL = input
+    #expect(harness.defaults.string(forKey: "iris.serverURL") == base)
+    uploader.refreshServerHealth()
+    try await waitUntil { !uploader.isCheckingHealth }
+    #expect(uploader.serverHealth?.ready == true)
+    #expect(uploader.lastHealthError == nil)
+
+    uploader.isEnabled = true
+    uploader.setStreaming(true)
+    uploader.submit(testImage())
+    try await waitUntil { !uploader.isUploading }
+    #expect(UploadProtocol.requests.map { $0.url?.absoluteString } == ["\(base)/health", "\(base)/frame"])
+    #expect(uploader.lastError == nil)
   }
 
   @Test func uploadsOneResizedJPEGWithTheExpectedMultipartContract() async throws {
@@ -106,6 +133,54 @@ struct FrameUploaderTests {
     uploader.submit(image)
     try await waitUntil { !uploader.isUploading }
     #expect(UploadProtocol.requests.count == 3)
+  }
+
+  @Test func failedVideoDecodesSkipUploadsAndRecoverWithoutRestarting() async throws {
+    let frames = try hevcFrames()
+    let decoder = VideoFrameDecoder()
+    #expect(decoder.decode(frames.predicted) == nil, "A new session waits for a keyframe")
+    let harness = Harness(replies: [
+      .response(200, try fixture("frame-alert")),
+      .response(200, try fixture("frame-quiet")),
+      .response(200, try fixture("frame-quiet")),
+    ])
+    let uploader = harness.uploader
+    uploader.isEnabled = true
+    uploader.setStreaming(true)
+    uploader.submit(try #require(decoder.decode(frames.keyframe)))
+    try await waitUntil { !uploader.isUploading }
+    #expect(UploadProtocol.requests.count == 1)
+
+    // Match the camera listener: only a non-nil decode is submitted. Advancing
+    // beyond 400 ms ensures throttling cannot hide an accidentally reused image.
+    for _ in 0..<3 {
+      harness.clock.time += 1
+      let image = decoder.decode(frames.corrupt)
+      #expect(image == nil)
+      if let image { uploader.submit(image) }
+      try await waitUntil { !uploader.isUploading }
+      #expect(UploadProtocol.requests.count == 1)
+    }
+    // Three failures recreate the session; predicted frames must stay skipped.
+    for _ in 0..<3 {
+      harness.clock.time += 1
+      let image = decoder.decode(frames.predicted)
+      #expect(image == nil)
+      if let image { uploader.submit(image) }
+      try await waitUntil { !uploader.isUploading }
+      #expect(UploadProtocol.requests.count == 1)
+    }
+    #expect(harness.speaker.spoken == ["possible person, left"])
+
+    for sample in [frames.keyframe, frames.predicted] {
+      harness.clock.time += 1
+      uploader.submit(try #require(decoder.decode(sample)))
+      try await waitUntil { !uploader.isUploading }
+    }
+    #expect(UploadProtocol.requests.count == 3)
+    #expect(uploader.isEnabled && uploader.isStreaming)
+    #expect(uploader.lastError == nil)
+    #expect(harness.speaker.spoken == ["possible person, left"])
   }
 
   @Test func recoversFromHTTPErrorsTimeoutsAndInvalidJSONWithoutSpeakingThem() async throws {
@@ -345,6 +420,25 @@ struct FrameUploaderTests {
     #expect(harness.speaker.spoken.isEmpty)
   }
 
+  @Test func healthUsesItsOwnSessionDuringAnUpload() async throws {
+    let harness = Harness(replies: [.hold, .response(200, healthReply())])
+    let uploader = harness.uploader
+    uploader.isEnabled = true
+    uploader.setStreaming(true)
+    uploader.submit(testImage())
+    try await waitUntil { UploadProtocol.requests.count == 1 }
+
+    uploader.refreshServerHealth()
+    try await waitUntil { !uploader.isCheckingHealth }
+    #expect(uploader.serverHealth?.ready == true)
+    #expect(uploader.lastHealthError == nil)
+    #expect(uploader.isUploading, "Health completes while the upload is still pending")
+    #expect(UploadProtocol.requests.map { $0.value(forHTTPHeaderField: "X-Iris-Test-Session") } == ["upload", "health"])
+
+    uploader.isEnabled = false
+    try await waitUntil { !uploader.isUploading }
+  }
+
   @Test func publicHealthDoesNotAuthenticateTheUploadKey() async throws {
     let harness = Harness(replies: [
       .response(401, Data(#"{"detail":"missing or wrong key"}"#.utf8)),
@@ -482,6 +576,60 @@ private func fixture(_ name: String) throws -> Data {
   return try Data(contentsOf: url)
 }
 
+/// Two real 64x64 blue HEVC frames (IDR then predicted), encoded with libx265.
+/// Embedded parameter sets avoid a device encoder or large video fixture in tests.
+private func hevcFrames() throws -> (keyframe: CMSampleBuffer, predicted: CMSampleBuffer, corrupt: CMSampleBuffer) {
+  let parameterSets = [
+    "QAEMAf//AWAAAAMAkAAAAwAAAwAekoCQ",
+    "QgEBAWAAAAMAkAAAAwAAAwAeoCCBBZZKkkyvAWgIAAADAAgAAAMA8EA=",
+    "RAHBcrQiQA==",
+  ].map { [UInt8](Data(base64Encoded: $0)!) }
+  var format: CMFormatDescription?
+  let status = parameterSets[0].withUnsafeBufferPointer { vps in
+    parameterSets[1].withUnsafeBufferPointer { sps in
+      parameterSets[2].withUnsafeBufferPointer { pps in
+        var pointers = [vps.baseAddress!, sps.baseAddress!, pps.baseAddress!]
+        var sizes = parameterSets.map { $0.count }
+        return CMVideoFormatDescriptionCreateFromHEVCParameterSets(
+          allocator: kCFAllocatorDefault, parameterSetCount: 3,
+          parameterSetPointers: &pointers, parameterSetSizes: &sizes,
+          nalUnitHeaderLength: 4, extensions: nil, formatDescriptionOut: &format)
+      }
+    }
+  }
+  try #require(status == noErr)
+  let description = try #require(format)
+
+  func sample(_ bytes: Data) throws -> CMSampleBuffer {
+    var block: CMBlockBuffer?
+    try #require(CMBlockBufferCreateWithMemoryBlock(
+      allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: bytes.count,
+      blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0,
+      dataLength: bytes.count, flags: 0, blockBufferOut: &block) == noErr)
+    let buffer = try #require(block)
+    try #require(bytes.withUnsafeBytes {
+      CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: buffer,
+        offsetIntoDestination: 0, dataLength: bytes.count)
+    } == noErr)
+    var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: 30),
+      presentationTimeStamp: .zero, decodeTimeStamp: .invalid)
+    var size = bytes.count
+    var result: CMSampleBuffer?
+    try #require(CMSampleBufferCreateReady(
+      allocator: kCFAllocatorDefault, dataBuffer: buffer, formatDescription: description,
+      sampleCount: 1, sampleTimingEntryCount: 1, sampleTimingArray: &timing,
+      sampleSizeEntryCount: 1, sampleSizeArray: &size, sampleBufferOut: &result) == noErr)
+    return try #require(result)
+  }
+
+  return (
+    try sample(Data(base64Encoded: "AAAAFCgBrwhg+e6tX/7jM+9R6fLS/rmA")!),
+    try sample(Data(base64Encoded: "AAAACwIB0Al+EMYQwPuM")!),
+    // A truncated NAL unit with a length prefix larger than its payload.
+    try sample(Data([0, 0, 0, 5, 0x02]))
+  )
+}
+
 @MainActor
 private func testImage() -> UIImage {
   let format = UIGraphicsImageRendererFormat()
@@ -519,23 +667,32 @@ private final class Harness {
   let speaker = SpeechSpy()
   let clock = TestClock()
   private let session: URLSession
-  private let defaults: UserDefaults
+  private let healthSession: URLSession
+  let defaults: UserDefaults
   private let suiteName = "FrameUploaderTests.\(UUID().uuidString)"
 
-  init(replies: [UploadProtocol.Reply]) {
+  init(replies: [UploadProtocol.Reply], serverURL: String = "https://iris.example.test") {
     UploadProtocol.reset(replies: replies)
     defaults = UserDefaults(suiteName: suiteName)!
-    defaults.set("https://iris.example.test", forKey: "iris.serverURL")
+    defaults.set(serverURL, forKey: "iris.serverURL")
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [UploadProtocol.self]
+    configuration.httpMaximumConnectionsPerHost = 1
+    configuration.httpAdditionalHeaders = ["X-Iris-Test-Session": "upload"]
     session = URLSession(configuration: configuration)
+    let healthConfiguration = URLSessionConfiguration.ephemeral
+    healthConfiguration.protocolClasses = [UploadProtocol.self]
+    healthConfiguration.httpMaximumConnectionsPerHost = 1
+    healthConfiguration.httpAdditionalHeaders = ["X-Iris-Test-Session": "health"]
+    healthSession = URLSession(configuration: healthConfiguration)
     let clock = clock
-    uploader = FrameUploader(defaults: defaults, session: session, speaker: speaker, now: { clock.time })
+    uploader = FrameUploader(defaults: defaults, session: session, healthSession: healthSession, speaker: speaker, now: { clock.time })
   }
 
   isolated deinit {
     uploader.isEnabled = false
     session.invalidateAndCancel()
+    healthSession.invalidateAndCancel()
     defaults.removePersistentDomain(forName: suiteName)
   }
 }
