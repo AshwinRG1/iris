@@ -164,15 +164,20 @@ def build_describer(s: Settings) -> Describer | None:
         return None
     try:
         describer = GeminiDescriber(
-            key, s.gemini_model.strip(), prompt, s.gemini_timeout_s, thinking_level="low"
+            key,
+            s.gemini_model.strip(),
+            prompt,
+            s.gemini_timeout_s,
+            thinking_level=s.gemini_thinking_level or None,
         )
     except Exception as e:
         log.warning("Gemini client could not be built (%s); descriptions are off", type(e).__name__)
         return None
     log.info(
-        "descriptions on: model %s, fallback %s, timeout %g s, cooldown %g s, max age %g s, "
-        "empty reset %g s, move %g, area %g, scene reset %g s",
+        "descriptions on: model %s, thinking %s, fallback %s, timeout %g s, cooldown %g s, "
+        "max age %g s, empty reset %g s, move %g, area %g, scene reset %g s",
         s.gemini_model.strip(),
+        s.gemini_thinking_level or "default",
         s.gemini_fallback_model.strip() or "none",
         s.gemini_timeout_s,
         s.describe_cooldown_s,

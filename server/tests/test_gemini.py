@@ -85,7 +85,7 @@ def test_build_describer_strips_the_key_and_passes_the_timeout(
     build_describer(
         _settings(tmp_path, gemini_api_key=SecretStr(f"  {SECRET}\n"), gemini_timeout_s=2)
     )
-    assert seen == [(SECRET, "gemini-3.6-flash", "system text", 2.0)]
+    assert seen == [(SECRET, "gemini-3.5-flash-lite", "system text", 2.0)]
 
 
 def test_build_describer_logs_one_info_line_when_on(
@@ -96,7 +96,8 @@ def test_build_describer_logs_one_info_line_when_on(
     assert d is not None
     asyncio.run(d.aclose())  # type: ignore[attr-defined]
     lines = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
-    assert len(lines) == 1 and "gemini-3.6-flash" in lines[0]
+    assert len(lines) == 1 and "gemini-3.5-flash-lite" in lines[0]
+    assert "fallback none" in lines[0] and "thinking default" in lines[0]
     assert all(w in lines[0] for w in ("empty reset 3", "move 0.25", "area 0.5", "scene reset 60"))
     assert SECRET not in caplog.text
 
@@ -198,11 +199,32 @@ def test_main_and_fallback_describers_get_their_models_and_thinking(
 
     monkeypatch.setattr("main.GeminiDescriber", Spy)
     s = _settings(tmp_path)
+    assert build_describer(s) is not None
+    assert build_fallback_describer(s) is None  # no fallback by default
+    assert [(a[1], kw["thinking_level"]) for a, kw in seen] == [("gemini-3.5-flash-lite", None)]
+    seen.clear()
+    s = _settings(
+        tmp_path,
+        gemini_model="main-model",
+        gemini_thinking_level="low",
+        gemini_fallback_model="fb-model",
+    )
     assert build_describer(s) is not None and build_fallback_describer(s) is not None
+    # The thinking level is the main model's only; the fallback keeps its own default.
     assert [(a[1], kw["thinking_level"]) for a, kw in seen] == [
-        ("gemini-3.6-flash", "low"),
-        ("gemini-3.5-flash-lite", None),
+        ("main-model", "low"),
+        ("fb-model", None),
     ]
+
+
+@pytest.mark.parametrize("level", ["", "minimal", "low", "medium", "high"])
+def test_the_thinking_level_accepts_empty_or_a_gemini_level(level: str) -> None:
+    assert Settings.model_validate({"gemini_thinking_level": level}).gemini_thinking_level == level
+
+
+def test_an_unknown_thinking_level_fails_startup() -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate({"gemini_thinking_level": "fast"})
 
 
 def test_an_empty_fallback_model_means_no_fallback(tmp_path: Path) -> None:
@@ -211,10 +233,10 @@ def test_an_empty_fallback_model_means_no_fallback(tmp_path: Path) -> None:
 
 def test_the_info_line_names_the_fallback(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.INFO, logger="iris")
-    d = build_describer(_settings(tmp_path))
+    d = build_describer(_settings(tmp_path, gemini_fallback_model="fb-model"))
     assert d is not None
     asyncio.run(d.aclose())  # type: ignore[attr-defined]
-    assert "gemini-3.5-flash-lite" in caplog.text
+    assert "fallback fb-model" in caplog.text
 
 
 def test_the_gemini_timeout_may_equal_but_not_exceed_the_max_age() -> None:

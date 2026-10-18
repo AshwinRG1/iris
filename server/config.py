@@ -35,9 +35,11 @@ class Settings(BaseSettings):
     # Spoken descriptions (ticket 08). An empty key turns them off at startup.
     describe: Literal["on", "off"] = "on"
     gemini_api_key: SecretStr = SecretStr("")  # SecretStr keeps it out of repr and logs
-    gemini_model: str = "gemini-3.6-flash"
+    gemini_model: str = "gemini-3.5-flash-lite"
+    # The main model's thinking level; empty sends none, so the model keeps its own default.
+    gemini_thinking_level: Literal["", "minimal", "low", "medium", "high"] = ""
     # Tried once when the main model times out or answers 503; empty means no fallback.
-    gemini_fallback_model: str = "gemini-3.5-flash-lite"
+    gemini_fallback_model: str = ""
     gemini_timeout_s: float = Field(default=3.0, gt=0, allow_inf_nan=False)
     describe_cooldown_s: float = Field(default=15.0, ge=0, allow_inf_nan=False)
     # A description older than the /frame window could never be spoken, so cap it there.
