@@ -316,14 +316,14 @@ The rescuer first hears the instant short alert ("possible person, left"). About
 **Anti-spam rules (server)**
 
 - **Existing guards stay:** the 4 s alert cooldown, the 10 s same-side repeat, and at most one Gemini call in flight.
-- **`DESCRIBE_COOLDOWN_S` (default 15) is the overall cap:** at most one call per window, counted from the last attempt (failed attempts count too, so a failing API isn't hammered). No trigger below can get around it. Short alerts aren't affected.
+- **`DESCRIBE_COOLDOWN_S` (default 8) is the overall cap:** at most one call per window, counted from the last attempt (failed attempts count too, so a failing API isn't hammered). No trigger below can get around it. Short alerts aren't affected.
 - **Describe only a new scene.** Descriptions still start only on an alert. The alerting frame's scene is new, and a description is allowed after the cooldown, when any of these hold:
   1. **Count or sides changed:** the person count or the set of sides differs from the described scene.
-  2. **Emptied and refilled:** frames with no person for `DESCRIBE_EMPTY_RESET_S` (default 3) make the server forget the described scene, so whoever appears next is new. This is tracked on every frame, not only on alerts. A pause with no frames at all doesn't count as empty: the empty run restarts after a gap longer than `DESCRIBE_EMPTY_RESET_S`.
+  2. **Emptied and refilled:** frames with no person for `DESCRIBE_EMPTY_RESET_S` (default 2) make the server forget the described scene, so whoever appears next is new. This is tracked on every frame, not only on alerts. A pause with no frames at all doesn't count as empty: the empty run restarts after a gap longer than `DESCRIBE_EMPTY_RESET_S`.
   3. **Moved or resized:** each box is matched to a described box on the same side, by nearest center (on each side, boxes pair up in left-to-right order, which is the nearest-center pairing). The scene is new if a matched box's center moves more than `DESCRIBE_MOVE_FRAC` (default 0.25) of the frame width, or its area changes by more than `DESCRIBE_AREA_FRAC` (default 0.5) of the described area. This catches a new person swapping in on the same side.
-  4. **Reset:** `DESCRIBE_SCENE_RESET_S` (default 60) since the alert that was last described, even if nothing else changed.
+  4. **Reset:** `DESCRIBE_SCENE_RESET_S` (default 30) since the alert that was last described, even if nothing else changed.
 
-  Otherwise the scene is unchanged and Gemini isn't called. A person standing still alerts every 10 s (same-side repeat), but is described once and then again only after 60 s.
+  Otherwise the scene is unchanged and Gemini isn't called. A person standing still alerts every 10 s (same-side repeat), but is described once and then again only after 30 s. These defaults (8 s cooldown, 30 s reset, 2 s empty reset) match the box tuning: the app speaks only descriptions, so the earlier 15 s, 60 s and 3 s were too quiet.
 - The described scene is recorded only when a description is attached. A failed, stale or dropped answer leaves it as it was, so the same scene is tried again after the cooldown. If the scene was forgotten (trigger 2) while the call was running, the answer is still spoken but the scene isn't recorded.
 - **Stale drop:** if Gemini answers more than `DESCRIBE_MAX_AGE_S` (default 5, at most 10) after the alert, or after a newer alert has fired, discard the answer.
 
@@ -507,11 +507,11 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 GEMINI_THINKING_LEVEL=
 GEMINI_FALLBACK_MODEL=
 GEMINI_TIMEOUT_S=3
-DESCRIBE_COOLDOWN_S=15
-DESCRIBE_EMPTY_RESET_S=3
+DESCRIBE_COOLDOWN_S=8
+DESCRIBE_EMPTY_RESET_S=2
 DESCRIBE_MOVE_FRAC=0.25
 DESCRIBE_AREA_FRAC=0.5
-DESCRIBE_SCENE_RESET_S=60
+DESCRIBE_SCENE_RESET_S=30
 DESCRIBE_MAX_AGE_S=5
 GEMINI_PROMPT_FILE=
 MAX_UPLOAD_BYTES=2000000
@@ -552,7 +552,7 @@ An empty `GEMINI_API_KEY` turns descriptions off with a startup warning. An empt
 **Process and secrets**
 - [ ] The service runs as the `iris` user with `NoNewPrivileges`, not as root.
 - [ ] Secrets live only in `/etc/iris.env` (mode 600) and local `.env` files. Only `.env.example` is committed.
-- [ ] Gemini can't be run up by strangers: it only fires after an alert on a keyed request, with at most one call in flight, at most one description per `DESCRIBE_COOLDOWN_S` (15 s), and none for an unchanged scene, so at most 240 calls an hour. Set a usage cap in AI Studio anyway.
+- [ ] Gemini can't be run up by strangers: it only fires after an alert on a keyed request, with at most one call in flight, at most one description per `DESCRIBE_COOLDOWN_S` (8 s), and none for an unchanged scene, so at most 450 calls an hour. Set a usage cap in AI Studio anyway.
 - [ ] `GEMINI_API_KEY` is never logged. `/health` reports `describe` and `gemini_model`, never the key.
 
 **After the event**
@@ -607,14 +607,14 @@ The expected values come from the rules in section 7, not from the code, and a p
 
 - Scenario 12 above: the describer sleeps past the timeout; `/frame` replies normally and `description` is `null`.
 - A frame with several people produces one call and one description.
-- A person standing still (alerting every 10 s) is described once and not again within 60 s. At the first alert at or after 60 s it is described again (trigger 4).
+- A person standing still (alerting every 10 s) is described once and not again within 30 s. At the first alert at or after 30 s it is described again (trigger 4).
 - A change in person count or sides after the describe cooldown produces a new call (trigger 1).
-- Frames empty for at least 3 s and then a person produce a new call after the cooldown. Empty for less than 3 s and then the same scene produces none (trigger 2).
+- Frames empty for at least 2 s and then a person produce a new call after the cooldown. Empty for less than 2 s and then the same scene produces none (trigger 2).
 - A center shift over 0.25 of the width, or an area change over 0.5, produces a new call after the cooldown. Smaller moves produce none (trigger 3).
-- A direct swap, where a new person appears in a clearly different position on the same side with no empty gap, is described at the first alert after the cooldown.
-- Triggers firing inside the cooldown, such as a side change and a move at 5 s and 10 s, produce no second call.
+- A direct swap, where a new person appears in a clearly different position on the same side with no empty gap, is described at its next alert. The 10 s same-side repeat already holds that alert past the 8 s cooldown.
+- A trigger firing inside the cooldown, such as a side change 4 s after a description, produces no second call. The next alert after 8 s does.
 - A failed or dropped answer leaves the described scene unchanged, so the same scene is tried again after the cooldown.
-- An answer that arrives after the scene emptied for 3 s doesn't record the scene. A pause in the stream doesn't count as empty.
+- An answer that arrives after the scene emptied for 2 s doesn't record the scene. A pause in the stream doesn't count as empty.
 - An answer later than `DESCRIBE_MAX_AGE_S` is discarded.
 - When a fallback model is set, a timeout or 503 from the main model retries once with it, within the deadline. A 400 or 429 doesn't retry, and neither does a deadline with under 0.5 s left.
 - The image sent to Gemini is at most 640 px on the long side.
