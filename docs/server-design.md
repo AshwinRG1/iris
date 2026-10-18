@@ -103,7 +103,7 @@ Either side's PRs must be revertable without breaking the other side.
 
 | Method and path | Auth | Purpose |
 | --- | --- | --- |
-| `GET /health` | none | Readiness, active model, device, labels, image size, fps, server ms p50/p95, commit, tuning. p50/p95 cover the last 100 frames within 60 s and are null when none are in that window |
+| `GET /health` | none | Readiness, active model, device, labels, image size, fps, server ms p50/p95, commit, tuning, `describe` (`on` or `off`, the effective state) and `gemini_model` (the main model when on, else `null`; never the key). p50/p95 cover the last 100 frames within 60 s and are null when none are in that window |
 | `GET /` | key, as `?key=` | Live view page |
 | `GET /latest.jpg` | key, as `?key=` | The last frame received, as raw JPEG |
 | `GET /latest` | key, as `?key=` | `frame_id`, detections with normalized boxes, the time the frame arrived, `age_ms`, `boot_id`, and an optional `stale` (true once the published frame is more than 3 s old; `detections` is then empty) |
@@ -236,7 +236,7 @@ sequenceDiagram
   W-->>API: detections
   API->>API: alert policy, store update, frame log
   opt alert fired and a description is allowed
-    API-)Gem: describe(frame with boxes drawn, box list), 6 s timeout
+    API-)Gem: describe(frame ≤640 px with boxes drawn, box list), 3 s per try, fallback once
   end
   API-->>App: detections, alert, description, frame_id, server_ms
   Gem--)API: description (later)
@@ -305,7 +305,7 @@ The rescuer first hears the instant short alert ("possible person, left"). About
 
 1. **Unchanged:** the detector and the alert policy. `/frame` still carries `alert`, the app still speaks it instantly, and it stays the safety signal that works with Gemini down.
 2. When an alert fires and a description is allowed (rules below), the server starts **one** background Gemini call with:
-   - the alerting frame's JPEG, with every kept detection box drawn on it and labeled with its side
+   - the alerting frame's JPEG, scaled down to at most 640 px on the long side, with every kept detection box drawn on it and labeled with its side
    - a text line listing each box's side and conf, for example `Boxes: left 0.92, left 0.71, ahead 0.61`
 3. Gemini returns one sentence. The server attaches it to the event that fired the alert, with a new `description_id`.
 4. `/frame` replies carry `description` and `description_id` while the event is less than 10 s old. `/events` and the live view show the description beside the event.
@@ -346,9 +346,11 @@ The rescuer first hears the instant short alert ("possible person, left"). About
 >
 > Speak directly to the rescuer ("to your left"). No preamble, no lists.
 
-**Model and key:** `GEMINI_MODEL` names a current Flash model from AI Studio, and the key is in `GEMINI_API_KEY`. A missing key means descriptions are off, with a startup warning: never a crash and never a failed health check. The key is never logged. `/health` may report describe on or off and the model name, never the key. `DESCRIBE=off` is the kill switch.
+**Model and key:** `GEMINI_MODEL` (default `gemini-3.6-flash`, asked for `thinkingLevel: low`) is the main model, and the key is in `GEMINI_API_KEY`. `GEMINI_FALLBACK_MODEL` (default `gemini-3.1-flash-lite`, sent with no thinking setting; empty means none) gets one retry when the main model times out or answers 503. A missing key means descriptions are off, with a startup warning: never a crash and never a failed health check. The key is never logged. `/health` reports `describe` (on or off) and `gemini_model`, never the key. `DESCRIBE=off` is the kill switch.
 
-**Failure:** a timeout (`GEMINI_TIMEOUT_S`, 6 s), an API error, an empty reply or a stale answer leaves `description` `null` and logs a warning. Alerts and `/frame` are never affected.
+**Deadline and fallback:** the whole description must arrive within `DESCRIBE_MAX_AGE_S` (5 s) of the alert. Each attempt waits at most `GEMINI_TIMEOUT_S` (3 s, never more than `DESCRIBE_MAX_AGE_S`) or the time left, whichever is shorter. After a timeout or a 503 from the main model, the fallback model gets one retry if at least 0.5 s is left. Other errors (400, 403, 429) don't retry.
+
+**Failure:** a timeout, an API error, an empty reply or a stale answer, after the fallback if there is one, leaves `description` `null` and logs a warning. Alerts and `/frame` are never affected.
 
 **Rollout**
 
@@ -501,8 +503,9 @@ WINDOW_MAX_AGE_S=2
 IRIS_API_KEY=
 DESCRIBE=on
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.8-flash
-GEMINI_TIMEOUT_S=6
+GEMINI_MODEL=gemini-3.6-flash
+GEMINI_FALLBACK_MODEL=gemini-3.1-flash-lite
+GEMINI_TIMEOUT_S=3
 DESCRIBE_COOLDOWN_S=15
 DESCRIBE_EMPTY_RESET_S=3
 DESCRIBE_MOVE_FRAC=0.25
@@ -549,7 +552,7 @@ An empty `GEMINI_API_KEY` turns descriptions off with a startup warning. An empt
 - [ ] The service runs as the `iris` user with `NoNewPrivileges`, not as root.
 - [ ] Secrets live only in `/etc/iris.env` (mode 600) and local `.env` files. Only `.env.example` is committed.
 - [ ] Gemini can't be run up by strangers: it only fires after an alert on a keyed request, with at most one call in flight, at most one description per `DESCRIBE_COOLDOWN_S` (15 s), and none for an unchanged scene, so at most 240 calls an hour. Set a usage cap in AI Studio anyway.
-- [ ] `GEMINI_API_KEY` is never logged. `/health` reports describe on or off and the model name, never the key.
+- [ ] `GEMINI_API_KEY` is never logged. `/health` reports `describe` and `gemini_model`, never the key.
 
 **After the event**
 - [ ] Confirm the teardown workflow destroyed the instance. A stopped instance still bills.
@@ -612,6 +615,8 @@ The expected values come from the rules in section 7, not from the code, and a p
 - A failed or dropped answer leaves the described scene unchanged, so the same scene is tried again after the cooldown.
 - An answer that arrives after the scene emptied for 3 s doesn't record the scene. A pause in the stream doesn't count as empty.
 - An answer later than `DESCRIBE_MAX_AGE_S` is discarded.
+- A timeout or 503 from the main model retries once with the fallback, within the deadline. A 400 or 429 doesn't retry, and neither does a deadline with under 0.5 s left.
+- The image sent to Gemini is at most 640 px on the long side.
 - `description_id` increases, and is `null` whenever `description` is `null`.
 - A missing `GEMINI_API_KEY` means descriptions are off.
 - The image passed to the describer has the boxes drawn on it.
