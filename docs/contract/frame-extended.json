@@ -4,6 +4,7 @@
   ],
   "alert": "possible person, right",
   "description": "One person partly covered by debris, arm visible, near a fallen beam.",
+  "description_id": 7,
   "frame_id": 1842,
   "server_ms": 96,
   "future_field": {"ignored": true}

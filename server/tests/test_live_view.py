@@ -138,6 +138,7 @@ def test_alert_appends_an_event() -> None:
             "side": "left",
             "conf": 0.8,
             "description": None,
+            "description_id": None,
         }
     ]
 

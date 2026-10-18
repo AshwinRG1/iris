@@ -5,7 +5,7 @@ import logging
 import math
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -109,11 +109,7 @@ class Snapshot:
 
 @dataclass(frozen=True)
 class Event:
-    """One fired alert.
-
-    `description` is reserved for ticket 08 and is always None for now; that ticket will
-    replace the event with a described copy instead of editing it.
-    """
+    """One fired alert. A description replaces the event with a described copy."""
 
     id: int
     t_ms: int
@@ -121,6 +117,7 @@ class Event:
     side: Side
     conf: float
     description: str | None = None
+    description_id: int | None = None  # counts up from 1 per boot, one per description
 
 
 class EventRing:
@@ -129,12 +126,28 @@ class EventRing:
     def __init__(self) -> None:
         self._events: deque[Event] = deque(maxlen=EVENTS_KEPT)
         self._last_id = 0
+        self._last_description_id = 0
 
     def add(self, t_ms: int, at: datetime, side: Side, conf: float) -> Event:
         self._last_id += 1
         event = Event(self._last_id, t_ms, at, side, conf)
         self._events.append(event)
         return event
+
+    def latest(self) -> Event | None:
+        return self._events[-1] if self._events else None
+
+    def describe(self, event_id: int, text: str) -> Event | None:
+        """Replace the event with a described copy; None if it already left the ring."""
+        for i, event in enumerate(self._events):
+            if event.id == event_id:
+                self._last_description_id += 1
+                described = replace(
+                    event, description=text, description_id=self._last_description_id
+                )
+                self._events[i] = described
+                return described
+        return None
 
     def since(self, event_id: int) -> tuple[Event, ...]:
         """A snapshot of the events newer than `event_id`, oldest first."""
@@ -150,4 +163,5 @@ def event_json(e: Event) -> dict[str, Any]:
         "side": e.side,
         "conf": e.conf,
         "description": e.description,
+        "description_id": e.description_id,
     }

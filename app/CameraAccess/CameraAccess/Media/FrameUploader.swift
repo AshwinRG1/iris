@@ -11,11 +11,13 @@ struct FrameResponse: Decodable, Equatable, Sendable {
   let frameID: Int?
   let serverMS: Int?
   let description: String?
+  let descriptionID: Int?
 
   private enum CodingKeys: String, CodingKey {
     case detections, alert, description
     case frameID = "frame_id"
     case serverMS = "server_ms"
+    case descriptionID = "description_id"
   }
 }
 
@@ -45,30 +47,6 @@ struct IrisServerHealth: Decodable, Equatable, Sendable {
     case loadError = "load_error"
     case serverMSP50 = "server_ms_p50"
     case serverMSP95 = "server_ms_p95"
-  }
-}
-
-@MainActor
-protocol FrameAlertSpeaking {
-  func speak(_ text: String)
-  func stop()
-}
-
-/// One synthesizer for the lifetime of the uploader; the current audio route also
-/// carries speech to connected glasses. Do not override the recording audio session.
-@MainActor
-final class FrameAlertSpeaker: FrameAlertSpeaking {
-  private let synthesizer = AVSpeechSynthesizer()
-
-  func speak(_ text: String) {
-    if synthesizer.isSpeaking {
-      synthesizer.stopSpeaking(at: .immediate)
-    }
-    synthesizer.speak(AVSpeechUtterance(string: text))
-  }
-
-  func stop() {
-    synthesizer.stopSpeaking(at: .immediate)
   }
 }
 
@@ -275,7 +253,11 @@ final class FrameUploader {
         if let alert = reply.alert, !alert.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
           lastAlert = alert
           lastAlertAt = lastResponseAt
-          speaker.speak(alert)
+          speaker.scheduleAlert(alert)
+        }
+        // Schedule first so a new description in this reply cancels the backup too.
+        if let description = reply.description, let id = reply.descriptionID {
+          speaker.speakDescription(description, id: id)
         }
       } catch {
         guard !Task.isCancelled, let self, generation == requestGeneration else { return }

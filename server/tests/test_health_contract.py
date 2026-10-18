@@ -23,15 +23,17 @@ from conftest import (
     wait_for,
 )
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from config import Settings
 from deps import Clock
 from detector import Loaded, ModelInfo
 from main import create_app
 
+SECRET = "sekret-gemini-key"
 FIXTURE = CONTRACT / "health.json"
 
-_STR_OR_NULL = ("device", "load_error", "auth", "commit", "fallback")
+_STR_OR_NULL = ("device", "load_error", "auth", "commit", "fallback", "describe", "gemini_model")
 _INT_OR_NULL = ("server_ms_p50", "server_ms_p95")
 
 
@@ -59,6 +61,7 @@ def check_server_guarantees(body: dict[str, Any]) -> None:
     """What this server promises beyond what Swift tolerates."""
     assert isinstance(body["device"], str), body["device"]
     assert body["auth"] in {"on", "off"}, body["auth"]
+    assert body["describe"] in {"on", "off"}, body["describe"]
     assert body["fps"] is not None
     assert set(body) == set(_fixture()), "update docs/contract/health.json"
 
@@ -187,3 +190,25 @@ def test_server_guarantees_reject_missing_key() -> None:
     del body["model_file"]
     with pytest.raises(AssertionError):
         check_server_guarantees(body)
+
+
+def _health_with(describer: FakeDescriber | None, **env: Any) -> dict[str, Any]:
+    settings = Settings(gemini_api_key=SecretStr(SECRET), **env)
+    app = create_app(FakeDetector(), describer, FakeClock(), FakeWallClock(), settings)
+    with TestClient(app) as c:
+        wait_for(lambda: _health(c)["ready"])
+        text = c.get("/health").text
+    assert SECRET not in text
+    body: dict[str, Any] = json.loads(text)
+    check_all(body)
+    return body
+
+
+def test_health_reports_descriptions_on_with_the_model() -> None:
+    body = _health_with(FakeDescriber("x"), gemini_model="gem-main", gemini_fallback_model="fb")
+    assert (body["describe"], body["gemini_model"]) == ("on", "gem-main")
+
+
+def test_health_reports_descriptions_off_with_no_model() -> None:
+    body = _health_with(None)
+    assert (body["describe"], body["gemini_model"]) == ("off", None)

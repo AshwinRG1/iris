@@ -55,6 +55,9 @@ const ctx = canvas.getContext("2d");
 const HIT = "#ff5a4f";
 const WEAK = "#7ec8ff";
 const KEPT_EVENTS = 200;
+const DESCRIPTION_WAIT_MS = 15000; // how long a new alert is re-polled for its description
+const rows = new Map(); // event id -> its list item
+const waiting = new Map(); // event id -> when it arrived without a description
 let lastEventId = 0;
 let bootId = null;
 let drawnFrameId = 0;
@@ -150,40 +153,68 @@ async function pollHealth() {
   }
 }
 
-function addEvent(log, e) {
-  const li = document.createElement("li");
-  const head = document.createElement("span");
-  head.className = "hit";
-  head.textContent = e.side + " " + Number(e.conf).toFixed(2);
-  const at = document.createElement("span");
-  at.className = "dim";
-  at.textContent = " " + e.at;
-  li.append(head, at);
-  if (e.description) {
-    const d = document.createElement("div");
-    d.textContent = e.description;
+function setDescription(li, text) {
+  let d = li.querySelector(".desc");
+  if (!d) {
+    d = document.createElement("div");
+    d.className = "desc";
     li.append(d);
   }
-  log.prepend(li);
+  d.textContent = text;
+}
+
+// An event seen again (re-polled for its description) is updated in place, never duplicated.
+function upsertEvent(log, e) {
+  let li = rows.get(e.id);
+  if (!li) {
+    li = document.createElement("li");
+    const head = document.createElement("span");
+    head.className = "hit";
+    head.textContent = e.side + " " + Number(e.conf).toFixed(2);
+    const at = document.createElement("span");
+    at.className = "dim";
+    at.textContent = " " + e.at;
+    li.append(head, at);
+    li.dataset.id = String(e.id);
+    log.prepend(li);
+    rows.set(e.id, li);
+    if (!e.description) waiting.set(e.id, Date.now());
+  }
+  if (e.description) {
+    setDescription(li, e.description);
+    waiting.delete(e.id);
+  }
   lastEventId = Math.max(lastEventId, e.id);
+}
+
+// Where to poll from: just before the oldest alert still waiting for its description.
+function sinceId() {
+  const now = Date.now();
+  for (const [id, t] of waiting) if (now - t > DESCRIPTION_WAIT_MS) waiting.delete(id);
+  return waiting.size ? Math.min(lastEventId, Math.min(...waiting.keys()) - 1) : lastEventId;
 }
 
 async function pollEvents() {
   try {
     const log = document.getElementById("log");
-    let reply = await getJson("/events?since=" + lastEventId);
+    let reply = await getJson("/events?since=" + sinceId());
     if (reply.boot_id !== bootId) {
       // The server restarted, so its ids started over: start over too.
       const restarted = bootId !== null;
       bootId = reply.boot_id;
       if (restarted) {
         log.replaceChildren();
+        rows.clear();
+        waiting.clear();
         lastEventId = 0;
         reply = await getJson("/events?since=0");
       }
     }
-    for (const e of reply.events) addEvent(log, e);
-    while (log.children.length > KEPT_EVENTS) log.lastElementChild.remove();
+    for (const e of reply.events) upsertEvent(log, e);
+    while (log.children.length > KEPT_EVENTS) {
+      rows.delete(Number(log.lastElementChild.dataset.id));
+      log.lastElementChild.remove();
+    }
   } catch (e) {
     /* the next poll retries */
   }
