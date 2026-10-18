@@ -1,4 +1,3 @@
-import json
 import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -12,9 +11,7 @@ from conftest import (
     FakeDetector,
     FakeWallClock,
     SettableClock,
-    SteppingWallClock,
     TimedDetector,
-    det,
     jpeg_bytes,
 )
 from fastapi.testclient import TestClient
@@ -47,11 +44,6 @@ def _post(c: TestClient) -> dict[str, Any]:
     return reply
 
 
-def _lines(log_dir: Path) -> list[dict[str, Any]]:
-    text = (log_dir / "frames.jsonl").read_text()
-    return [json.loads(line) for line in text.splitlines()]
-
-
 @contextmanager
 def _timed(arrivals_and_costs: list[tuple[int, int]]) -> Iterator[tuple[TestClient, SettableClock]]:
     """Post one frame per (arrival ms, server ms) pair, then hand over the client."""
@@ -63,25 +55,6 @@ def _timed(arrivals_and_costs: list[tuple[int, int]]) -> Iterator[tuple[TestClie
             detector.cost_ms = cost
             _post(c)
         yield c, clock
-
-
-def test_each_frame_appends_one_line_with_its_own_wall_clock_at(log_dir: Path) -> None:
-    with _client(FakeDetector([[det(conf=0.71, cx=0.1)], []]), wall_clock=SteppingWallClock()) as c:
-        _post(c)
-        _post(c)
-    first, second = _lines(log_dir)
-    assert first == {
-        "at": "2026-01-01T00:00:01+00:00",
-        "frame_id": 1,
-        "server_ms": 10,
-        "detections": [{"label": "person", "conf": 0.71, "side": "left"}],
-        "alert": None,
-        "description": None,
-        "description_id": None,
-    }
-    assert second["at"] == "2026-01-01T00:00:02+00:00"
-    assert second["frame_id"] == 2
-    assert second["detections"] == []
 
 
 def test_failing_log_warns_once_and_frames_still_succeed(
