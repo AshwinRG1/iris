@@ -27,10 +27,24 @@ class ErrorDetail(BaseModel):
     detail: str
 
 
+class BoxOut(BaseModel):
+    x: float  # top-left, normalized 0..1
+    y: float
+    w: float
+    h: float
+
+
+class CenterOut(BaseModel):
+    x: float
+    y: float
+
+
 class DetectionOut(BaseModel):
     label: str
     conf: float
     side: Side
+    box: BoxOut
+    center: CenterOut
 
 
 class FrameReply(BaseModel):
@@ -128,7 +142,24 @@ async def frame(
         (None, None) if alert else _spoken(runtime.events.latest(), started)
     )
     reply = FrameReply(
-        detections=[DetectionOut(label=d.label, conf=d.conf, side=d.side) for d in kept],
+        detections=[
+            DetectionOut(
+                label=d.label,
+                conf=d.conf,
+                side=d.side,
+                box=BoxOut(
+                    x=d.box.x1,
+                    y=d.box.y1,
+                    w=d.box.x2 - d.box.x1,
+                    h=d.box.y2 - d.box.y1,
+                ),
+                center=CenterOut(
+                    x=(d.box.x1 + d.box.x2) / 2,
+                    y=(d.box.y1 + d.box.y2) / 2,
+                ),
+            )
+            for d in kept
+        ],
         alert=alert.text if alert else None,
         frame_id=runtime.last_frame_id,
         server_ms=deps.clock.now_ms() - started,

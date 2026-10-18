@@ -265,6 +265,7 @@ final class CameraViewModel {
       isStreaming: frameUploader.isStreaming,
       hasError: frameUploader.lastError != nil,
       isPaused: isPaused,
+      frameSize: frameUploader.lastFrameSize ?? CGSize(width: 640, height: 480),
       at: Date()
     ))
   }

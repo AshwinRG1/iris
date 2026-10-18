@@ -19,6 +19,7 @@
 		1A1500000000000000000013 /* HUDDeliveryBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1500000000000000000014 /* HUDDeliveryBuffer.swift */; };
 		1A1500000000000000000015 /* DetectionHUDRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1500000000000000000016 /* DetectionHUDRenderer.swift */; };
 		1A1500000000000000000017 /* GlassesDisplayController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1500000000000000000018 /* GlassesDisplayController.swift */; };
+		1A1500000000000000000019 /* DetectionBoxLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A150000000000000000001A /* DetectionBoxLayout.swift */; };
 		8F8F00782E8ACB4600A4BDAF /* WearablesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F8F00772E8ACB4500A4BDAF /* WearablesViewModel.swift */; };
 		8FD96B7F2E6F0A9800F56AB1 /* CameraAccessApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FD96B792E6F0A9800F56AB1 /* CameraAccessApp.swift */; };
 		8FD96B812E6F0A9800F56AB1 /* HomeScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FD96B722E6F0A9800F56AB1 /* HomeScreenView.swift */; };
@@ -96,6 +97,7 @@
 		1A1500000000000000000014 /* HUDDeliveryBuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDDeliveryBuffer.swift; sourceTree = "<group>"; };
 		1A1500000000000000000016 /* DetectionHUDRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectionHUDRenderer.swift; sourceTree = "<group>"; };
 		1A1500000000000000000018 /* GlassesDisplayController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassesDisplayController.swift; sourceTree = "<group>"; };
+		1A150000000000000000001A /* DetectionBoxLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectionBoxLayout.swift; sourceTree = "<group>"; };
 		3A3A3A3A3A3A3A3A3A3A3A3A /* CameraAccess.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CameraAccess.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8F8F00772E8ACB4500A4BDAF /* WearablesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearablesViewModel.swift; sourceTree = "<group>"; };
 		8FD96B6F2E6F0A9800F56AB1 /* CameraViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraViewModel.swift; sourceTree = "<group>"; };
@@ -256,6 +258,7 @@
 				1A1500000000000000000012 /* DetectionHUDSnapshot.swift */,
 				1A1500000000000000000014 /* HUDDeliveryBuffer.swift */,
 				1A1500000000000000000016 /* DetectionHUDRenderer.swift */,
+				1A150000000000000000001A /* DetectionBoxLayout.swift */,
 				1A150000000000000000000A /* MockVideoPreparer.swift */,
 				1A1500000000000000000002 /* FrameUploader.swift */,
 				1A1500000000000000000010 /* FrameAlertSpeaker.swift */,
@@ -446,6 +449,7 @@
 				1A1500000000000000000011 /* DetectionHUDSnapshot.swift in Sources */,
 				1A1500000000000000000013 /* HUDDeliveryBuffer.swift in Sources */,
 				1A1500000000000000000015 /* DetectionHUDRenderer.swift in Sources */,
+				1A1500000000000000000019 /* DetectionBoxLayout.swift in Sources */,
 				1A1500000000000000000017 /* GlassesDisplayController.swift in Sources */,
 				1A150000000000000000000D /* DetectionHold.swift in Sources */,
 				1A1500000000000000000009 /* MockVideoPreparer.swift in Sources */,

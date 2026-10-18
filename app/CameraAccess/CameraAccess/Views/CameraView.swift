@@ -82,11 +82,7 @@ struct CameraView: View {
               .edgesIgnoringSafeArea(.top)
           )
 
-        if viewModel.showsLivePreview {
-          DetectionOverlayView(display: viewModel.glassesDisplay)
-        } else {
-          Spacer(minLength: 0)
-        }
+        Spacer(minLength: 0)
 
         bottomBar
       }
@@ -131,6 +127,9 @@ struct CameraView: View {
         // while the stream tears down — so the paused badge / stop loader overlays
         // the preview rather than the start-streaming screen.
         LivePreviewView(viewModel: viewModel)
+          .overlay {
+            DetectionOverlayView(display: viewModel.glassesDisplay)
+          }
         if viewModel.isPaused {
           // Dim the frozen frame so the badge reads as intentionally paused.
           Color.black.opacity(0.35)

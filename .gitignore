@@ -19,3 +19,9 @@ app/**/*.dSYM
 
 # Local evaluation environment
 .venv-eval/
+
+# Local server development environment
+.venv/
+
+# Per-image ground truth and scores are shared with the run artifacts
+docs/results_v2_operating_points.json

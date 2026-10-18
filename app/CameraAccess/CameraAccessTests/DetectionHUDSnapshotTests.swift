@@ -1,4 +1,5 @@
 @testable import CameraAccess
+import CoreGraphics
 import Foundation
 import Testing
 
@@ -95,6 +96,21 @@ struct DetectionHUDSnapshotTests {
     let hud = snapshot(held)
     #expect(hud.heading == "DETECTIONS")
     #expect(hud.groups.first?.detections == [limb, limb])
+  }
+
+  @Test func boxMovementAndFrameAspectChangesUpdateTheDisplay() {
+    var held = DetectionHold()
+    let first = FrameDetection(label: "person", conf: 0.9, side: "ahead",
+                               box: FrameDetectionBox(x: 0.4, y: 0.1, w: 0.2, h: 0.4))
+    held.apply([first], at: start)
+    let initial = snapshot(held)
+    let moved = FrameDetection(label: "person", conf: 0.9, side: "ahead",
+                               box: FrameDetectionBox(x: 0.4, y: 0.2, w: 0.2, h: 0.4))
+    held.apply([moved], at: start.addingTimeInterval(0.4))
+    #expect(snapshot(held, after: 0.4) != initial)
+    let portrait = DetectionHUDSnapshot(held: held, isEnabled: true, isStreaming: true, hasError: false,
+                                        frameSize: CGSize(width: 480, height: 640), at: start.addingTimeInterval(0.4))
+    #expect(portrait != snapshot(held, after: 0.4))
   }
 
   private func snapshot(_ held: DetectionHold, after delay: TimeInterval = 0, hasError: Bool = false) -> DetectionHUDSnapshot {
