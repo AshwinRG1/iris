@@ -12,10 +12,12 @@ from pydantic import BaseModel
 from alerts import decide
 from auth import require_key_header
 from deps import Deps, Runtime, get_deps, get_runtime
+from describe import start_description
+from describe_policy import note_frame
 from detector import Detector
-from domain import Detection, Side
+from domain import SPOKEN_MS, Detection, Side
 from form_part import MalformedForm, read_part
-from store import Snapshot, event_json
+from store import Event, Snapshot, event_json
 
 router = APIRouter()
 log = logging.getLogger("iris")
@@ -36,9 +38,17 @@ class FrameReply(BaseModel):
     alert: str | None
     frame_id: int
     server_ms: int
+    description: str | None = None
+    description_id: int | None = None
 
 
 MAX_SIDE_PX = 4096
+
+
+def _spoken(event: Event | None, now_ms: int) -> tuple[str | None, int | None]:
+    if event is None or event.description is None or now_ms - event.t_ms >= SPOKEN_MS:
+        return None, None
+    return event.description, event.description_id
 
 
 class BadImage(Exception):
@@ -108,13 +118,22 @@ async def frame(
         raise HTTPException(status_code=400, detail=str(e)) from e
     labels = deps.settings.alert_label_set
     kept = [d for d in found if d.label.lower() in labels and d.conf >= deps.settings.conf_detect]
+    runtime.describe_state = note_frame(
+        runtime.describe_state, kept, started, deps.settings.describe_tuning.empty_reset_ms
+    )
     runtime.policy, alert = decide(runtime.policy, kept, started, runtime.tuning)
     runtime.last_frame_id += 1
+    # An alert makes a new latest event, which has no description yet.
+    description, description_id = (
+        (None, None) if alert else _spoken(runtime.events.latest(), started)
+    )
     reply = FrameReply(
         detections=[DetectionOut(label=d.label, conf=d.conf, side=d.side) for d in kept],
         alert=alert.text if alert else None,
         frame_id=runtime.last_frame_id,
         server_ms=deps.clock.now_ms() - started,
+        description=description,
+        description_id=description_id,
     )
     runtime.stats.record(started, reply.server_ms)
     at = deps.wall_clock.now()
@@ -123,6 +142,7 @@ async def frame(
     if alert is not None:
         event = runtime.events.add(alert.t_ms, at, alert.hit.side, alert.hit.conf)
         runtime.event_log.append(event_json(event))
+        start_description(deps, runtime, event, jpeg, kept)
     return reply
 
 
@@ -132,6 +152,8 @@ class Health(BaseModel):
     device: str
     load_error: str | None
     auth: Literal["on", "off"]
+    describe: Literal["on", "off"]  # the effective state: off also when the key is missing
+    gemini_model: str | None  # the main model while on; never the key
     model_file: str | None
     model_sha256: str | None
     class_names: list[str] | None
@@ -155,6 +177,8 @@ async def health(
         device=runtime.device,
         load_error=runtime.load_error,
         auth="on" if deps.settings.iris_api_key else "off",
+        describe="on" if deps.describer is not None else "off",
+        gemini_model=deps.settings.gemini_model.strip() if deps.describer is not None else None,
         model_file=info.file,
         model_sha256=info.sha256,
         class_names=None if info.class_names is None else list(info.class_names),

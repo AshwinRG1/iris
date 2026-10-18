@@ -4,9 +4,10 @@ A sample iOS application demonstrating integration with Meta Wearables Device Ac
 
 ## Features
 
-- Connect to Meta AI glasses
+- Connect to Meta Ray-Ban Display glasses
 - Explicit camera lifecycle: start/end a device session and start/stop the live preview
 - Stream the camera feed from the device
+- Show the same detection cards on the glasses and over the phone's live camera preview
 - Capture photos
 - Record video, with optional sound-in-video captured from the glasses' microphone
 - Backgrounding the app ends the active preview session and returns the sample to a clean idle state
@@ -19,7 +20,7 @@ A sample iOS application demonstrating integration with Meta Wearables Device Ac
 - Xcode 26.4+
 - Swift 6.3+
 - Meta Wearables Device Access Toolkit (included as a dependency)
-- A Meta AI glasses device for testing (optional for development)
+- Meta Ray-Ban Display glasses for hardware testing (optional for development)
 
 ## Building the app
 
@@ -87,9 +88,9 @@ That response contains no box coordinates. Set the server URL and enable
 doesn't run an on-device detector.
 
 The live preview fits each frame to the available screen while preserving its
-aspect ratio, with black margins when needed. Directional indicators stay within
-the displayed image's bounds. The preview and detection uploads use the same
-complete frame, including for landscape, square and tall videos.
+aspect ratio, with black margins when needed. Directional indicators appear at
+the top of the screen below the camera controls. The preview and detection uploads
+use the same complete frame, including for landscape, square and tall videos.
 
 ### Iris uploads and detection HUD
 
@@ -121,12 +122,59 @@ misses, dims to 50% while missing, and fades out after three misses or 1.2 secon
 since its last detection. Failed requests do not count as misses; the overlay
 also clears after two seconds without a successful frame reply. Stopping the
 preview or changing upload settings clears it immediately.
-Only server `alert` text is spoken. Optional scene descriptions appear in status.
+Alerts and Gemini scene descriptions appear in status as replies arrive. Only
+Gemini descriptions are spoken, once per new optional `description_id`, using
+the existing Apple text-to-speech voice. Server alerts remain display-only.
+Descriptions wait for current speech; only the newest waiting description is
+kept, and it is dropped if it has waited more than five seconds. Stopping the
+preview, disabling uploads, or changing the server URL or key clears pending
+speech and remembered description IDs.
+Replies without `description_id` remain compatible and display descriptions only.
+
+### Meta Ray-Ban Display HUD and phone preview
+
+Start a session with Meta Ray-Ban Display glasses to connect their display
+automatically. The display shares the camera's device session. Open **Iris
+status**, configure the server and enable **Send frames and speak alerts**, then
+start **Preview** to receive detections. The phone has one live camera view with
+the detection HUD across the top. Photos, recording and uploads use the camera
+frames beneath that HUD.
+
+The app renders shared 600×600 HUD artwork and sends it through `MWDATDisplay`.
+Its compact cards sit at the top, with left/ahead/right directions,
+confidence percentages and dimmed held detections. Empty directions draw nothing.
+Each column shows up to three detections with an overflow count; other directions
+have two named summary lines beneath the cards. With no detections the display
+stays unlit. The phone composites the transparent artwork over its camera feed;
+the glasses receive that same artwork on a black canvas. The wearer sees the HUD over their
+surroundings directly; the camera video is not sent back into the display.
+
+**Iris status** shows the display connection, HUD delivery and detection state.
+Failed transfers retry with the newest image, and **Retry display** reconnects a
+failed display without ending the camera session. Display updates never overlap or queue old
+frames. Detection expiry runs independently of the visible phone view, including
+while Iris status is open. Pausing/stopping the camera or disabling uploads
+removes detections; ending the session or backgrounding the app stops the display.
+
+For development on an iPhone without Display glasses, enable MockDeviceKit in the
+ladybug menu and choose **Pair Meta Ray-Ban Display**. Turn on Power, Donned and
+Unfolded, load a camera feed, and start the session and preview. Pair a single
+powered device to make the camera's automatic device selection unambiguous.
+Device selection, mock pairing and test setup target Meta Ray-Ban Display only.
+
+Physical-device verification is still required for the display's optical size,
+firmware image layout, camera/display operation together and reconnection. The
+phone composites the sent HUD image over camera frames; it does not read the
+hardware framebuffer or reproduce Meta's system UI.
 
 `FrameUploaderTests` covers the shared JSON fixtures, multipart/JPEG formatting,
 background JPEG drawing, throttling, cancellation and recovery using an in-memory
 URL loading transport, plus held indicators across misses, errors and resets.
 `DetectionHoldTests` checks per-side history, dimming, expiry and future directions.
+`DetectionHUDSnapshotTests` checks the shared HUD content and freshness, and
+`HUDDeliveryBufferTests` checks transfer coalescing, retries and session invalidation.
+`FrameAlertSpeakerTests` checks description deduplication, pending replacement,
+expiry, delayed callbacks and resets without playing audio.
 `MockVideoPreparerTests` checks HEVC passthrough, temporary
 file ownership, 1080p conversion in both orientations, H.264 imports, B-frame
 removal, cancellation and the bundled sample's frame timing.

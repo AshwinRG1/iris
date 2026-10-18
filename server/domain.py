@@ -5,6 +5,9 @@ from typing import Literal
 
 Side = Literal["left", "ahead", "right"]
 
+# How long an event's description rides on /frame replies.
+SPOKEN_MS = 10_000
+
 
 @dataclass(frozen=True)
 class Box:
@@ -40,7 +43,7 @@ class Detection:
 class Tuning:
     """Alert policy tuning. Times are integer ms; the environment speaks seconds."""
 
-    conf_alert: float = 0.35
+    conf_alert: float = 0.20
     window: int = 3
     needed: int = 2
     cooldown_ms: int = 4000

@@ -11,6 +11,7 @@ struct FrameUploaderTests {
   @Test(arguments: ["frame-alert", "frame-quiet", "frame-extended"])
   func decodesContractFixtures(_ name: String) throws {
     let response = try JSONDecoder().decode(FrameResponse.self, from: fixture(name))
+    #expect(response.descriptionID == nil, "Existing server replies remain compatible")
     switch name {
     case "frame-alert":
       #expect(response.detections.count == 2)
@@ -34,6 +35,78 @@ struct FrameUploaderTests {
     let response = try JSONDecoder().decode(FrameResponse.self, from: data)
     #expect(response.detections.first?.label == "new-class")
     #expect(response.detections.first?.side == "above")
+  }
+
+  @Test func decodesOptionalDescriptionIDs() throws {
+    let data = Data(#"{"detections":[],"alert":null,"description":"Two people ahead.","description_id":7,"frame_id":1042,"server_ms":68}"#.utf8)
+    let response = try JSONDecoder().decode(FrameResponse.self, from: data)
+    #expect(response.descriptionID == 7)
+    #expect(response.description == "Two people ahead.")
+    #expect(response.frameID == 1042)
+    #expect(response.serverMS == 68)
+
+    let empty = Data(#"{"detections":[],"alert":null,"description":null,"description_id":null}"#.utf8)
+    #expect(try JSONDecoder().decode(FrameResponse.self, from: empty).descriptionID == nil)
+  }
+
+  @Test func speaksOnlyGeminiDescriptionsAndKeepsAlertsOnScreen() async throws {
+    let first = Data(#"{"detections":[],"alert":"Possible person, left.","description":"Two people to your left.","description_id":7}"#.utf8)
+    let second = Data(#"{"detections":[],"alert":null,"description":"One person ahead.","description_id":8}"#.utf8)
+    let harness = Harness(replies: [.response(200, first), .response(200, second)])
+    let uploader = harness.uploader
+    uploader.isEnabled = true
+    uploader.setStreaming(true)
+    uploader.submit(testImage())
+    try await waitUntil { !uploader.isUploading }
+    #expect(harness.speaker.requests == [
+      .description("Two people to your left.", 7),
+    ])
+    #expect(uploader.lastAlert == "Possible person, left.")
+    #expect(uploader.sceneDescription == "Two people to your left.")
+    let alertTime = uploader.lastAlertAt
+
+    harness.clock.time += 1
+    uploader.submit(testImage())
+    try await waitUntil { !uploader.isUploading }
+    #expect(harness.speaker.requests.last == .description("One person ahead.", 8))
+    #expect(uploader.lastAlert == "Possible person, left.")
+    #expect(uploader.sceneDescription == "One person ahead.")
+    #expect(uploader.lastAlertAt == alertTime)
+  }
+
+  @Test(arguments: [1, 2])
+  func alertsWithoutGeminiDescriptionsRemainDisplayOnly(_ count: Int) async throws {
+    let alerts = Array(["Possible person, left.", "Possible person, right."].prefix(count))
+    let replies = alerts.map { alert in
+      UploadProtocol.Reply.response(200, Data("{\"detections\":[],\"alert\":\"\(alert)\"}".utf8))
+    }
+    let harness = Harness(replies: replies)
+    let uploader = harness.uploader
+    uploader.isEnabled = true
+    uploader.setStreaming(true)
+
+    for alert in alerts {
+      harness.clock.time += 5
+      uploader.submit(testImage())
+      try await waitUntil { !uploader.isUploading }
+      #expect(uploader.lastAlert == alert)
+      #expect(uploader.lastAlertAt != nil)
+      #expect(uploader.sceneDescription == nil)
+      #expect(harness.speaker.requests.isEmpty)
+    }
+  }
+
+  @Test(arguments: ["", ",\"description_id\":null"])
+  func descriptionsWithoutIDsRemainDisplayOnly(_ field: String) async throws {
+    let reply = Data("{\"detections\":[],\"alert\":null,\"description\":\"Two people ahead.\"\(field)}".utf8)
+    let harness = Harness(replies: [.response(200, reply)])
+    let uploader = harness.uploader
+    uploader.isEnabled = true
+    uploader.setStreaming(true)
+    uploader.submit(testImage())
+    try await waitUntil { !uploader.isUploading }
+    #expect(uploader.sceneDescription == "Two people ahead.")
+    #expect(harness.speaker.requests.isEmpty)
   }
 
   @Test(arguments: ["http://10.138.20.97:8000", "https://203-0-113-10.nip.io"],
@@ -93,7 +166,8 @@ struct FrameUploaderTests {
     let uploaded = try #require(UIImage(data: jpeg)?.cgImage)
     #expect(uploaded.width == 640, "A Retina source must still upload exactly 640 pixels wide")
     #expect(uploaded.height == 360)
-    #expect(harness.speaker.spoken == ["possible person, left"])
+    #expect(harness.speaker.requests.isEmpty)
+    #expect(uploader.lastAlert == "possible person, left")
     #expect(uploader.lastAlertAt != nil)
     #expect(uploader.lastRoundTripMS != nil)
     #expect(uploader.lastError == nil)
@@ -120,7 +194,7 @@ struct FrameUploaderTests {
     #expect(UploadProtocol.requests.count == 1)
     try await waitUntil { !uploader.isUploading }
     #expect(UploadProtocol.cancellations == 1)
-    #expect(harness.speaker.spoken.isEmpty)
+    #expect(harness.speaker.requests.isEmpty)
 
     uploader.submit(image)
     try await waitUntil { !uploader.isUploading }
@@ -184,7 +258,7 @@ struct FrameUploaderTests {
       try await waitUntil { !uploader.isUploading }
       #expect(UploadProtocol.requests.count == 1)
     }
-    #expect(harness.speaker.spoken == ["possible person, left"])
+    #expect(harness.speaker.requests.isEmpty)
 
     for sample in [frames.keyframe, frames.predicted] {
       harness.clock.time += 1
@@ -194,7 +268,7 @@ struct FrameUploaderTests {
     #expect(UploadProtocol.requests.count == 3)
     #expect(uploader.isEnabled && uploader.isStreaming)
     #expect(uploader.lastError == nil)
-    #expect(harness.speaker.spoken == ["possible person, left"])
+    #expect(harness.speaker.requests.isEmpty)
   }
 
   @Test func recoversFromHTTPErrorsTimeoutsAndInvalidJSONWithoutSpeakingThem() async throws {
@@ -221,7 +295,7 @@ struct FrameUploaderTests {
       #expect(uploader.lastError?.localizedCaseInsensitiveContains(expectedError) == true)
       #expect(uploader.isEnabled && uploader.isStreaming)
       #expect(uploader.detections.isEmpty)
-      #expect(harness.speaker.spoken.isEmpty)
+      #expect(harness.speaker.requests.isEmpty)
     }
 
     harness.clock.time += 1
@@ -232,7 +306,7 @@ struct FrameUploaderTests {
     #expect(uploader.lastFrameID == 1842)
     #expect(uploader.lastServerMS == 96)
     #expect(uploader.sceneDescription != nil)
-    #expect(harness.speaker.spoken == ["possible person, right"], "Scene descriptions are never spoken")
+    #expect(harness.speaker.requests.isEmpty, "Legacy descriptions without IDs remain display-only")
     let alertTime = uploader.lastAlertAt
 
     harness.clock.time += 1
@@ -241,12 +315,12 @@ struct FrameUploaderTests {
     #expect(uploader.detections.isEmpty)
     #expect(uploader.sceneDescription == nil)
     #expect(uploader.lastAlertAt == alertTime)
-    #expect(harness.speaker.spoken.count == 1, "A quiet frame does not speak or erase alert history")
+    #expect(harness.speaker.requests.isEmpty, "A quiet frame does not schedule speech or erase alert history")
 
     harness.clock.time += 1
     uploader.submit(image)
     try await waitUntil { !uploader.isUploading }
-    #expect(harness.speaker.spoken == ["possible person, right", "possible person, right"], "The server alone decides alert cooldowns")
+    #expect(harness.speaker.requests.isEmpty, "Repeated alerts remain display-only")
     #expect(UploadProtocol.requests.allSatisfy { $0.value(forHTTPHeaderField: "X-Iris-Key") == "test-key" })
   }
 
@@ -278,7 +352,7 @@ struct FrameUploaderTests {
       #expect(state.isDimmed)
     }
     #expect(uploader.lastAlertAt == alertTime)
-    #expect(harness.speaker.spoken == ["possible person, left"])
+    #expect(harness.speaker.requests.isEmpty)
   }
 
   @Test func failedRequestsLeaveHeldCardsAndMissCountsUnchanged() async throws {
@@ -311,7 +385,7 @@ struct FrameUploaderTests {
     }
     uploader.expireHeldDetections(at: receivedAt.addingTimeInterval(2.001))
     #expect(uploader.held.sides.isEmpty)
-    #expect(harness.speaker.spoken == ["possible person, left"])
+    #expect(harness.speaker.requests.isEmpty)
   }
 
   @Test(arguments: ["stream", "uploads", "url", "key"])
@@ -323,6 +397,7 @@ struct FrameUploaderTests {
     uploader.submit(testImage())
     try await waitUntil { !uploader.isUploading }
     #expect(!uploader.held.sides.isEmpty)
+    let stops = harness.speaker.stopCount
 
     switch change {
     case "stream": uploader.setStreaming(false)
@@ -333,6 +408,7 @@ struct FrameUploaderTests {
     #expect(uploader.held == DetectionHold())
     #expect(uploader.detections.isEmpty)
     #expect(uploader.lastResponseAt == nil)
+    #expect(harness.speaker.stopCount == stops + 1, "Reset pending speech and description IDs with the stream/settings")
   }
 
   @Test func streamStopsAndSettingsChangesCancelPendingFrames() async throws {
@@ -348,7 +424,7 @@ struct FrameUploaderTests {
     try await waitUntil { !uploader.isUploading }
     #expect(uploader.detections.isEmpty)
     #expect(uploader.lastError == nil, "Intentional cancellation is not a network failure")
-    #expect(harness.speaker.spoken.isEmpty)
+    #expect(harness.speaker.requests.isEmpty)
 
     uploader.setStreaming(true)
     uploader.submit(image)
@@ -362,7 +438,7 @@ struct FrameUploaderTests {
     #expect(uploader.lastResponseAt == nil)
     try await waitUntil { !uploader.isUploading }
     #expect(UploadProtocol.cancellations == 2)
-    #expect(harness.speaker.spoken == ["possible person, left"])
+    #expect(harness.speaker.requests.isEmpty)
   }
 
   @Test func invalidConfigurationAndInvalidFramesRecoverLocally() async throws {
@@ -405,7 +481,7 @@ struct FrameUploaderTests {
     try await waitUntil { !uploader.isUploading }
     #expect(uploader.lastError?.contains("4096 px") == true)
     #expect(UploadProtocol.requests.isEmpty)
-    #expect(harness.speaker.spoken.isEmpty)
+    #expect(harness.speaker.requests.isEmpty)
 
     harness.clock.time += 1
     // The server accepts the boundary itself, not just ordinary landscape frames.
@@ -472,7 +548,7 @@ struct FrameUploaderTests {
     #expect(uploader.lastRoundTripMS == nil)
     #expect(uploader.lastFrameID == nil)
     #expect(uploader.isEnabled && uploader.isStreaming)
-    #expect(harness.speaker.spoken.isEmpty)
+    #expect(harness.speaker.requests.isEmpty)
     if status == 503 {
       #expect(error.contains("not ready"))
       #expect(!error.contains("loading"))
@@ -516,7 +592,7 @@ struct FrameUploaderTests {
     #expect(!uploader.isEnabled && !uploader.isStreaming)
     #expect(uploader.lastResponseAt == nil)
     #expect(uploader.lastFrameID == nil)
-    #expect(harness.speaker.spoken.isEmpty)
+    #expect(harness.speaker.requests.isEmpty)
   }
 
   @Test func healthUsesItsOwnSessionDuringAnUpload() async throws {
@@ -554,13 +630,13 @@ struct FrameUploaderTests {
     try await waitUntil { !uploader.isCheckingHealth }
     #expect(uploader.lastError == authError)
     #expect(uploader.lastResponseAt == nil)
-    #expect(harness.speaker.spoken.isEmpty)
+    #expect(harness.speaker.requests.isEmpty)
 
     harness.clock.time += 1
     uploader.submit(testImage())
     try await waitUntil { !uploader.isUploading }
     #expect(uploader.lastError == nil)
-    #expect(harness.speaker.spoken == ["possible person, left"])
+    #expect(harness.speaker.requests.isEmpty)
   }
 
   @Test func failedModelHealthDoesNotPreventFrameRecovery() async throws {
@@ -607,7 +683,7 @@ struct FrameUploaderTests {
     try await waitUntil { !uploader.isCheckingHealth }
     #expect(uploader.serverHealth?.ready == true)
     #expect(uploader.lastHealthError == nil)
-    #expect(harness.speaker.spoken.isEmpty)
+    #expect(harness.speaker.requests.isEmpty)
   }
 
   @Test func changingServerCancelsHealthAndIgnoresStaleResults() async throws {
@@ -640,7 +716,9 @@ struct FrameUploaderTests {
       try await waitUntil { !harness.uploader.isUploading }
     }
     #expect(harness.uploader.lastFrameID == 1)
-    #expect(harness.speaker.spoken.count == 2)
+    #expect(harness.uploader.lastAlert == "possible person, left")
+    #expect(UploadProtocol.requests.count == 2)
+    #expect(harness.speaker.requests.isEmpty)
   }
 
   @Test func healthChecksDoNotRefreshExpiredHUDDetections() async throws {
@@ -658,7 +736,7 @@ struct FrameUploaderTests {
     try await waitUntil { !uploader.isCheckingHealth }
     #expect(uploader.lastResponseAt == receivedAt)
     #expect(!uploader.hasFreshDetections(at: receivedAt.addingTimeInterval(3)))
-    #expect(harness.speaker.spoken == ["possible person, left"])
+    #expect(harness.speaker.requests.isEmpty)
   }
 }
 
@@ -761,9 +839,14 @@ private func waitUntil(_ condition: () -> Bool) async throws {
 
 @MainActor
 private final class SpeechSpy: FrameAlertSpeaking {
-  var spoken: [String] = []
-  func speak(_ text: String) { spoken.append(text) }
-  func stop() {}
+  enum Request: Equatable {
+    case description(String, Int)
+  }
+
+  var requests: [Request] = []
+  var stopCount = 0
+  func speakDescription(_ text: String, id: Int) { requests.append(.description(text, id)) }
+  func stop() { stopCount += 1 }
 }
 
 @MainActor

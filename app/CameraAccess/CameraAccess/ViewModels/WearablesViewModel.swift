@@ -36,7 +36,9 @@ final class WearablesViewModel {
 
   init(wearables: WearablesInterface) {
     self.wearables = wearables
-    self.devices = wearables.devices
+    self.devices = wearables.devices.filter {
+      wearables.deviceForIdentifier($0)?.deviceType() == .metaRayBanDisplay
+    }
     self.registrationState = wearables.registrationState
 
     // Set up device stream immediately to handle MockDevice events
@@ -64,9 +66,12 @@ final class WearablesViewModel {
 
     deviceStreamTask = Task {
       for await devices in wearables.devicesStream() {
-        self.devices = devices
+        let displayDevices = devices.filter {
+          wearables.deviceForIdentifier($0)?.deviceType() == .metaRayBanDisplay
+        }
+        self.devices = displayDevices
         // Monitor compatibility for each device
-        monitorDeviceCompatibility(devices: devices)
+        monitorDeviceCompatibility(devices: displayDevices)
       }
     }
   }

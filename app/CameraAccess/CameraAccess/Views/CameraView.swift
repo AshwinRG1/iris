@@ -76,13 +76,17 @@ struct CameraView: View {
         topBar
           .padding(.horizontal, 20)
           .padding(.top, 16)
-          .padding(.bottom, 40)
+          .padding(.bottom, 16)
           .background(
             LinearGradient(colors: [.black.opacity(0.6), .clear], startPoint: .top, endPoint: .bottom)
               .edgesIgnoringSafeArea(.top)
           )
 
-        Spacer(minLength: 0)
+        if viewModel.showsLivePreview {
+          DetectionOverlayView(display: viewModel.glassesDisplay)
+        } else {
+          Spacer(minLength: 0)
+        }
 
         bottomBar
       }
@@ -106,8 +110,14 @@ struct CameraView: View {
     }
     .navigationBarHidden(true)
     .sheet(isPresented: $showUploadStatus) {
-      FrameUploadStatusView(uploader: viewModel.frameUploader)
+      FrameUploadStatusView(
+        uploader: viewModel.frameUploader,
+        display: viewModel.glassesDisplay,
+        canRetryDisplay: viewModel.isSessionActive,
+        retryDisplay: viewModel.retryGlassesDisplay
+      )
     }
+    .onDisappear { viewModel.endSession() }
   }
 
   // MARK: - Preview background
@@ -528,11 +538,6 @@ private struct LivePreviewView: View {
           // Uploads contain the whole frame. Show the same field of view for
           // portrait, landscape and square sources, with black margins as needed.
           .aspectRatio(contentMode: .fit)
-          .overlay {
-            // Position directions within the image, before expanding its surface
-            // to the screen's bounds (which may include letterboxing).
-            DetectionOverlayView(uploader: viewModel.frameUploader)
-          }
           .frame(width: geometry.size.width, height: geometry.size.height)
           .clipped()
       }

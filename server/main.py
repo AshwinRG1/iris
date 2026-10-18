@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import sys
 import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -14,9 +15,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from config import Settings
-from deps import Clock, Deps, Describer, Runtime, WallClock, get_deps
+from deps import Clock, Deps, Runtime, WallClock, get_deps
 from detector import DetectFn, Detector, FallbackDetector, YoloDetector, ZeroShotDetector
 from frame_routes import router as frame_router
+from gemini import Closable, Describer, GeminiDescriber
 from limits import BodyLimitMiddleware
 from live_routes import router as live_router
 from store import JsonlLog
@@ -52,21 +54,31 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     task = asyncio.create_task(load_model())
     yield
-    task.cancel()
-    # A load already running in its thread can't be interrupted; shutdown doesn't wait for it.
-    await asyncio.gather(task, return_exceptions=True)
-    runtime.slot.shutdown(wait=False, cancel_futures=True)
+    try:
+        task.cancel()
+        # A load already running in its thread can't be interrupted; shutdown doesn't wait for it.
+        await asyncio.gather(task, return_exceptions=True)
+        runtime.slot.shutdown(wait=False, cancel_futures=True)
+        pending = list(runtime.describe_tasks)
+        for t in pending:
+            t.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+    finally:
+        for describer in (deps.describer, deps.fallback_describer):
+            if isinstance(describer, Closable):
+                await describer.aclose()
 
 
 def create_app(
     detector: Detector,
-    describer: Describer,
+    describer: Describer | None,  # None: descriptions are off
     clock: Clock,
     wall_clock: WallClock,
     settings: Settings,
+    fallback_describer: Describer | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Iris server", lifespan=_lifespan)
-    app.state.deps = Deps(detector, describer, clock, wall_clock, settings)
+    app.state.deps = Deps(detector, describer, fallback_describer, clock, wall_clock, settings)
     app.state.runtime = Runtime(
         device=detector.device,
         frame_log=JsonlLog(Path(settings.log_dir) / "frames.jsonl", "frames"),
@@ -100,9 +112,82 @@ class _SystemWallClock:
         return datetime.now(UTC)
 
 
-class _NoDescriber:
-    async def describe(self, jpeg: bytes) -> str:
-        return ""
+DEFAULT_PROMPT = Path(__file__).resolve().parent / "prompts" / "describe.txt"
+
+
+def _read_prompt(s: Settings) -> str | None:
+    path = Path(s.gemini_prompt_file) if s.gemini_prompt_file else DEFAULT_PROMPT
+    try:
+        prompt = path.read_text(encoding="utf-8")
+        if not prompt.strip():
+            raise ValueError("empty")
+    except (OSError, ValueError) as e:  # UnicodeDecodeError is a ValueError
+        log.warning(
+            "GEMINI_PROMPT_FILE %s is unusable (%s); descriptions are off", path, type(e).__name__
+        )
+        return None
+    return prompt
+
+
+def build_fallback_describer(s: Settings) -> Describer | None:
+    """The second model, tried once after a timeout or 503. Call only when the main one built.
+
+    It sends no thinking setting, so the lite model keeps its own default (minimal); on the box
+    that answered in about 0.6 s.
+    """
+    model = s.gemini_fallback_model.strip()
+    prompt = _read_prompt(s) if model else None
+    if prompt is None:
+        return None
+    key = s.gemini_api_key.get_secret_value().strip()
+    try:
+        return GeminiDescriber(key, model, prompt, s.gemini_timeout_s, thinking_level=None)
+    except Exception as e:
+        log.warning("Gemini fallback could not be built (%s); no fallback", type(e).__name__)
+        return None
+
+
+def build_describer(s: Settings) -> Describer | None:
+    """The Gemini adapter, or None with one log line naming why. Never raises or logs the key."""
+    if s.describe == "off":
+        log.info("DESCRIBE=off; descriptions are off")
+        return None
+    key = s.gemini_api_key.get_secret_value().strip()
+    if not key:
+        log.warning("GEMINI_API_KEY is not set; descriptions are off")
+        return None
+    if not s.gemini_model.strip():
+        log.warning("GEMINI_MODEL is empty; descriptions are off")
+        return None
+    prompt = _read_prompt(s)
+    if prompt is None:
+        return None
+    try:
+        describer = GeminiDescriber(
+            key,
+            s.gemini_model.strip(),
+            prompt,
+            s.gemini_timeout_s,
+            thinking_level=s.gemini_thinking_level or None,
+        )
+    except Exception as e:
+        log.warning("Gemini client could not be built (%s); descriptions are off", type(e).__name__)
+        return None
+    log.info(
+        "descriptions on: model %s, thinking %s, fallback %s, timeout %g s, cooldown %g s, "
+        "max age %g s, empty reset %g s, move %g, area %g, scene reset %g s",
+        s.gemini_model.strip(),
+        s.gemini_thinking_level or "default",
+        s.gemini_fallback_model.strip() or "none",
+        s.gemini_timeout_s,
+        s.describe_cooldown_s,
+        s.describe_max_age_s,
+        s.describe_empty_reset_s,
+        s.describe_move_frac,
+        s.describe_area_frac,
+        s.describe_scene_reset_s,
+    )
+    return describer
 
 
 def _import_zeroshot() -> DetectFn:
@@ -122,9 +207,26 @@ def build_detector(
     )
 
 
+def configure_logging() -> None:
+    """Send the app's INFO lines to stderr, so they reach journalctl. Safe to call twice."""
+    logger = logging.getLogger("iris")
+    if any(getattr(h, "_iris", False) for h in logger.handlers):
+        return
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    handler._iris = True  # type: ignore[attr-defined]
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+
 def _build_app() -> FastAPI:
+    configure_logging()
     s = Settings()
-    return create_app(build_detector(s), _NoDescriber(), _MonotonicClock(), _SystemWallClock(), s)
+    describer = build_describer(s)
+    fallback = build_fallback_describer(s) if describer is not None else None
+    return create_app(
+        build_detector(s), describer, _MonotonicClock(), _SystemWallClock(), s, fallback
+    )
 
 
 app = _build_app()

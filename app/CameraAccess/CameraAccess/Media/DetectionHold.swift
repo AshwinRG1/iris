@@ -23,11 +23,14 @@ struct DetectionHold: Equatable, Sendable {
 
   private(set) var sides: [String: SideState] = [:]
   private(set) var lastSuccessfulReplyAt: Date?
+  // Expiring a positive reply must not turn it into an empty-frame claim.
+  private(set) var lastReplyWasEmpty = false
 
   /// Call only for successful /frame replies; failures are neither hits nor misses.
   mutating func apply(_ detections: [FrameDetection], at date: Date) {
     let bySide = Dictionary(grouping: detections, by: \.side)
     lastSuccessfulReplyAt = date
+    lastReplyWasEmpty = detections.isEmpty
 
     for side in Array(sides.keys) where bySide[side] == nil {
       sides[side]?.missCount += 1

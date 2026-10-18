@@ -46,11 +46,11 @@ final class MockDeviceKitViewModel {
     isEnabled = false
   }
 
-  // Add a new mock Ray-Ban Meta device
+  // This app targets only Meta Ray-Ban Display.
   func pairGlasses() {
     let mockDevice: MockGlasses
     do {
-      mockDevice = try mockDeviceKit.pairGlasses(model: .rayBanMeta)
+      mockDevice = try mockDeviceKit.pairGlasses(model: .metaRayBanDisplay)
     } catch {
       showError(error.localizedDescription)
       return

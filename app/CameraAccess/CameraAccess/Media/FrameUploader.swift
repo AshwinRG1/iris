@@ -11,11 +11,13 @@ struct FrameResponse: Decodable, Equatable, Sendable {
   let frameID: Int?
   let serverMS: Int?
   let description: String?
+  let descriptionID: Int?
 
   private enum CodingKeys: String, CodingKey {
     case detections, alert, description
     case frameID = "frame_id"
     case serverMS = "server_ms"
+    case descriptionID = "description_id"
   }
 }
 
@@ -45,30 +47,6 @@ struct IrisServerHealth: Decodable, Equatable, Sendable {
     case loadError = "load_error"
     case serverMSP50 = "server_ms_p50"
     case serverMSP95 = "server_ms_p95"
-  }
-}
-
-@MainActor
-protocol FrameAlertSpeaking {
-  func speak(_ text: String)
-  func stop()
-}
-
-/// One synthesizer for the lifetime of the uploader; the current audio route also
-/// carries speech to connected glasses. Do not override the recording audio session.
-@MainActor
-final class FrameAlertSpeaker: FrameAlertSpeaking {
-  private let synthesizer = AVSpeechSynthesizer()
-
-  func speak(_ text: String) {
-    if synthesizer.isSpeaking {
-      synthesizer.stopSpeaking(at: .immediate)
-    }
-    synthesizer.speak(AVSpeechUtterance(string: text))
-  }
-
-  func stop() {
-    synthesizer.stopSpeaking(at: .immediate)
   }
 }
 
@@ -141,6 +119,9 @@ final class FrameUploader {
   @ObservationIgnored private var generation = 0
   @ObservationIgnored private var healthTask: Task<Void, Never>?
   @ObservationIgnored private var healthGeneration = 0
+  /// Delivers complete state changes to the glasses even when the camera or
+  /// settings screen is covering the phone HUD. Health checks never trigger it.
+  @ObservationIgnored var onHUDUpdate: (@MainActor () -> Void)?
 
   private static let interval: TimeInterval = 0.4
   private static let timeout: TimeInterval = 1.5
@@ -275,8 +256,12 @@ final class FrameUploader {
         if let alert = reply.alert, !alert.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
           lastAlert = alert
           lastAlertAt = lastResponseAt
-          speaker.speak(alert)
         }
+        // Only Gemini descriptions use speech; server alerts remain on screen.
+        if let description = reply.description, let id = reply.descriptionID {
+          speaker.speakDescription(description, id: id)
+        }
+        onHUDUpdate?()
       } catch {
         guard !Task.isCancelled, let self, generation == requestGeneration else { return }
         if error is DecodingError {
@@ -358,6 +343,7 @@ final class FrameUploader {
     lastFrameID = nil
     lastError = nil
     speaker.stop()
+    onHUDUpdate?()
   }
 
   private func recordFailure(_ message: String) {
@@ -371,6 +357,7 @@ final class FrameUploader {
     let changed = lastError != message
     lastError = message
     if changed { Self.logger.error("\(message, privacy: .public)") }
+    onHUDUpdate?()
   }
 
   private func invalidateServerHealth() {
