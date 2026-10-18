@@ -82,6 +82,10 @@ struct CameraView: View {
               .edgesIgnoringSafeArea(.top)
           )
 
+        if viewModel.showsLivePreview {
+          DetectionOverlayView(uploader: viewModel.frameUploader)
+        }
+
         Spacer(minLength: 0)
 
         bottomBar
@@ -528,11 +532,6 @@ private struct LivePreviewView: View {
           // Uploads contain the whole frame. Show the same field of view for
           // portrait, landscape and square sources, with black margins as needed.
           .aspectRatio(contentMode: .fit)
-          .overlay {
-            // Position directions within the image, before expanding its surface
-            // to the screen's bounds (which may include letterboxing).
-            DetectionOverlayView(uploader: viewModel.frameUploader)
-          }
           .frame(width: geometry.size.width, height: geometry.size.height)
           .clipped()
       }

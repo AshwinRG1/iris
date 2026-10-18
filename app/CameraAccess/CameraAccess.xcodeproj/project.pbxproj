@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1A150000000000000000000F /* FrameAlertSpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1500000000000000000010 /* FrameAlertSpeaker.swift */; };
 		1A150000000000000000000D /* DetectionHold.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A150000000000000000000E /* DetectionHold.swift */; };
 		1A1500000000000000000009 /* MockVideoPreparer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A150000000000000000000A /* MockVideoPreparer.swift */; };
 		1A150000000000000000000B /* iris_nobframes_720p.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 1A150000000000000000000C /* iris_nobframes_720p.mp4 */; };
@@ -78,6 +79,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		1A1500000000000000000010 /* FrameAlertSpeaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameAlertSpeaker.swift; sourceTree = "<group>"; };
 		1A150000000000000000000E /* DetectionHold.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectionHold.swift; sourceTree = "<group>"; };
 		1A150000000000000000000A /* MockVideoPreparer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockVideoPreparer.swift; sourceTree = "<group>"; };
 		1A150000000000000000000C /* iris_nobframes_720p.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = iris_nobframes_720p.mp4; sourceTree = "<group>"; };
@@ -242,6 +244,7 @@
 				1A150000000000000000000E /* DetectionHold.swift */,
 				1A150000000000000000000A /* MockVideoPreparer.swift */,
 				1A1500000000000000000002 /* FrameUploader.swift */,
+				1A1500000000000000000010 /* FrameAlertSpeaker.swift */,
 				D7A0000000000000000000AB /* AudioCaptureHandler.swift */,
 				D7A0000000000000000000A9 /* AudioInputHandler.swift */,
 				D7A0000000000000000000A5 /* VideoCaptureHandler.swift */,
@@ -423,6 +426,7 @@
 				1A150000000000000000000D /* DetectionHold.swift in Sources */,
 				1A1500000000000000000009 /* MockVideoPreparer.swift in Sources */,
 				1A1500000000000000000001 /* FrameUploader.swift in Sources */,
+				1A150000000000000000000F /* FrameAlertSpeaker.swift in Sources */,
 				1A1500000000000000000003 /* DetectionOverlayView.swift in Sources */,
 				1A1500000000000000000005 /* FrameUploadStatusView.swift in Sources */,
 				8FD96B7F2E6F0A9800F56AB1 /* CameraAccessApp.swift in Sources */,
