@@ -376,7 +376,7 @@ def test_empty_then_refill_makes_a_call_after_the_cooldown(make: Make) -> None:
 
 def test_a_short_gap_does_not_forget_the_scene(make: Make) -> None:
     rig, d = _described_at_400(make)
-    rig.run(800, 3200, [])  # empty for 2.4 s
+    rig.run(800, 2400, [])  # empty for 1.6 s, under the 2 s reset
     rig.alert_at(16_000, [A])
     assert not rig.runtime.describe_tasks and len(d.calls) == 1
 
@@ -411,20 +411,24 @@ def test_sixty_seconds_after_the_description_the_same_scene_is_described_again(
     wait_for(lambda: len(d.calls) == 2)
 
 
-def test_a_person_standing_still_is_described_once_per_minute(make: Make) -> None:
+def test_a_person_standing_still_is_described_again_only_after_the_scene_reset(
+    make: Make,
+) -> None:
     d = FakeDescriber("said")
     rig = make(d)
     rig.run(0, 400, [A])
     rig.described(1)
     rig.idle()
-    rig.run(800, 59_600, [A])  # alerts at 10.4 s, 20.4 s ... 50.4 s
-    assert len(rig.events()) == 6  # the alerts fired; only the scene rule held back the calls
+    rig.run(800, 29_600, [A])  # alerts at 10.4 s and 20.4 s, both past the 8 s cooldown
+    assert len(rig.events()) == 3  # the alerts fired; only the scene rule held back the calls
     assert len(d.calls) == 1
-    rig.run(60_000, 60_400, [A])  # the next alert is at 60.4 s
+    rig.run(30_000, 30_400, [A])  # the next alert, 30 s after the described one
     wait_for(lambda: len(d.calls) == 2)
 
 
-def test_a_swap_to_a_new_person_without_a_gap_waits_for_the_cooldown(make: Make) -> None:
+def test_a_swap_to_a_new_person_without_a_gap_is_described_at_its_next_alert(
+    make: Make,
+) -> None:
     d = FakeDescriber("said")
     rig = make(d)
     rig.run(0, 400, [A])
@@ -432,19 +436,19 @@ def test_a_swap_to_a_new_person_without_a_gap_waits_for_the_cooldown(make: Make)
     rig.idle()
     other = det(conf=0.8, cx=0.32)  # same side, clearly elsewhere
     rig.run(800, 10_000, [A])
-    rig.run(10_400, 10_400, [other])  # alerts here, 10 s after the last, inside the cooldown
-    assert len(d.calls) == 1 and not rig.runtime.describe_tasks
-    rig.run(10_800, 20_400, [other])  # alerts again at 20.4 s
+    # The same-side repeat (10 s) holds the alert until 10.4 s, past the 8 s describe cooldown.
+    rig.run(10_400, 10_400, [other])
     wait_for(lambda: len(d.calls) == 2)
     assert d.calls[1][1] == "Boxes: left 0.80"
 
 
 def test_triggers_inside_the_cooldown_make_no_call(make: Make) -> None:
     rig, d = _described_at_400(make)
-    rig.alert_at(5400, [A, det(conf=0.9, cx=0.9)])  # count and sides changed
-    assert not rig.runtime.describe_tasks
-    rig.alert_at(10_400, [det(conf=0.8, cx=0.32)])  # left again, moved
+    # The 4 s alert cooldown lets one more alert fire inside the 8 s describe cooldown.
+    rig.alert_at(4400, [A, det(conf=0.9, cx=0.9)])  # count and sides changed
     assert not rig.runtime.describe_tasks and len(d.calls) == 1
+    rig.alert_at(8400, [det(conf=0.8, cx=0.32)])  # 8 s after the last call: allowed again
+    wait_for(lambda: len(d.calls) == 2)
 
 
 @pytest.mark.parametrize(
