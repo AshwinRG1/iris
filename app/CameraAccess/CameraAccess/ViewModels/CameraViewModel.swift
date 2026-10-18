@@ -74,6 +74,7 @@ final class CameraViewModel {
 
   /// Shared by the glasses and Mock Device Kit frame path, the HUD and status UI.
   let frameUploader = FrameUploader()
+  let glassesDisplay = GlassesDisplayController()
 
   // MARK: - Capture preview
 
@@ -167,6 +168,7 @@ final class CameraViewModel {
   @ObservationIgnored private var deviceSession: DeviceSession?
   @ObservationIgnored private var camera: MWDATCamera.Camera?
   @ObservationIgnored private var isStoppingForBackground: Bool = false
+  @ObservationIgnored private var isRequestingCameraPermission = false
   @ObservationIgnored private var backgroundStopSuppressionTask: Task<Void, Never>?
 
   @ObservationIgnored private let videoRecorder = VideoRecorder()
@@ -176,6 +178,7 @@ final class CameraViewModel {
 
   @ObservationIgnored private var deviceMonitorTask: Task<Void, Never>?
   @ObservationIgnored private var appLifecycleTask: Task<Void, Never>?
+  @ObservationIgnored private var hudRefreshTask: Task<Void, Never>?
   @ObservationIgnored private let sessionTokenBag = ListenerTokenBag()
   @ObservationIgnored private let streamTokenBag = ListenerTokenBag()
 
@@ -190,8 +193,18 @@ final class CameraViewModel {
     backgroundStopErrorSuppressionTimeout: Duration = .seconds(5)
   ) {
     self.wearables = wearables
-    self.deviceSelector = AutoDeviceSelector(wearables: wearables)
+    self.deviceSelector = AutoDeviceSelector(
+      wearables: wearables, filter: { $0.deviceType() == .metaRayBanDisplay }
+    )
     self.backgroundStopErrorSuppressionTimeout = backgroundStopErrorSuppressionTimeout
+    frameUploader.onHUDUpdate = { [weak self] in self?.refreshDetectionHUD() }
+    // Expiry must continue while sheets cover the camera and its HUD.
+    hudRefreshTask = Task { @MainActor [weak self] in
+      while !Task.isCancelled {
+        self?.refreshDetectionHUD()
+        do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+      }
+    }
     startDeviceMonitoring()
     startAppLifecycleMonitoring()
   }
@@ -199,6 +212,7 @@ final class CameraViewModel {
   isolated deinit {
     deviceMonitorTask?.cancel()
     appLifecycleTask?.cancel()
+    hudRefreshTask?.cancel()
     backgroundStopSuppressionTask?.cancel()
     deviceSession?.stop()
   }
@@ -234,7 +248,25 @@ final class CameraViewModel {
     // Reflect the in-flight stop immediately so the controls disable at once; the
     // state observer drives it onward to `.stopped`.
     sessionState = .stopping
+    glassesDisplay.stop()
     session.stop()
+  }
+
+  func retryGlassesDisplay() {
+    guard let session = deviceSession, session.state == .started else { return }
+    glassesDisplay.stop()
+    glassesDisplay.attach(to: session)
+  }
+
+  private func refreshDetectionHUD() {
+    glassesDisplay.update(DetectionHUDSnapshot(
+      held: frameUploader.held,
+      isEnabled: frameUploader.isEnabled,
+      isStreaming: frameUploader.isStreaming,
+      hasError: frameUploader.lastError != nil,
+      isPaused: isPaused,
+      at: Date()
+    ))
   }
 
   // MARK: - Lifecycle step 2: stream
@@ -268,6 +300,10 @@ final class CameraViewModel {
   func confirmCameraPermissionRedirect() async {
     showCameraPermissionRedirectConfirm = false
     guard let session = deviceSession, session.state == .started, camera == nil else { return }
+    // Meta AI must foreground to grant access. Preserve the session during this
+    // intentional app switch so the display doesn't break first-time setup.
+    isRequestingCameraPermission = true
+    defer { isRequestingCameraPermission = false }
     do {
       guard try await wearables.requestPermission(.camera) == .granted else {
         showError("Camera permission denied")
@@ -283,7 +319,7 @@ final class CameraViewModel {
   /// Creates the camera `Stream` on the started session and starts it. Callers
   /// must have ensured camera permission is granted first.
   private func beginStream(on session: DeviceSession) {
-    guard camera == nil else { return }
+    guard deviceSession === session, session.state == .started, camera == nil else { return }
     // hvc1 (compressed HEVC) so frames can be written to file in passthrough mode.
     // Glasses-mic (Bluetooth HFP) audio for sound-in-video is captured app-side by
     // AudioCaptureHandler, so the SDK stream needs only the public video config (no audio codec).
@@ -410,26 +446,28 @@ final class CameraViewModel {
   /// Monitors device availability only — does NOT create sessions. Session
   /// creation is deferred to `startSession()` to avoid races.
   private func startDeviceMonitoring() {
+    let selector = deviceSelector
     deviceMonitorTask = Task { [weak self] in
-      guard let self else { return }
-      for await deviceId in deviceSelector.activeDeviceStream() {
-        hasActiveDevice = deviceId != nil
+      for await deviceId in selector.activeDeviceStream() {
+        guard !Task.isCancelled else { return }
+        self?.hasActiveDevice = deviceId != nil
       }
     }
   }
 
   private func startAppLifecycleMonitoring() {
     appLifecycleTask = Task { [weak self] in
-      guard let self else { return }
       for await _ in NotificationCenter.default.notifications(named: UIApplication.didEnterBackgroundNotification) {
-        self.handleDidEnterBackground()
+        guard !Task.isCancelled else { return }
+        self?.handleDidEnterBackground()
       }
     }
   }
 
   private func handleDidEnterBackground() {
     frameUploader.setStreaming(false)
-    guard hasSession, hasStream, sessionState != .stopping else { return }
+    if isRequestingCameraPermission, !hasStream { return }
+    guard hasSession, sessionState != .stopping else { return }
 
     beginBackgroundStopErrorSuppression()
     endSession()
@@ -458,16 +496,27 @@ final class CameraViewModel {
   // MARK: - Session observation
 
   private func observeSession(_ session: DeviceSession) {
-    session.statePublisher.listen { [weak self] state in
-      Task { @MainActor in self?.handleSessionStateChange(state) }
+    session.statePublisher.listen { [weak self, weak session] state in
+      Task { @MainActor [weak self, weak session] in
+        guard let self, let session, self.deviceSession === session else { return }
+        self.handleSessionStateChange(state)
+      }
     }.store(in: sessionTokenBag)
-    session.errorPublisher.listen { [weak self] error in
-      Task { @MainActor in self?.handleSessionError(error) }
+    session.errorPublisher.listen { [weak self, weak session] error in
+      Task { @MainActor [weak self, weak session] in
+        guard let self, let session, self.deviceSession === session else { return }
+        self.handleSessionError(error)
+      }
     }.store(in: sessionTokenBag)
   }
 
   private func handleSessionStateChange(_ state: DeviceSessionState) {
     sessionState = state
+    glassesDisplay.setSessionActive(state == .started)
+    if state == .started, let session = deviceSession {
+      glassesDisplay.attach(to: session)
+    }
+    if state == .stopping { glassesDisplay.stop() }
     if state == .stopped {
       endBackgroundStopErrorSuppression()
       cleanupSession()
@@ -487,6 +536,7 @@ final class CameraViewModel {
   /// Terminal session cleanup — drop the reference and observers so the next
   /// `startSession()` creates a fresh session.
   private func cleanupSession() {
+    glassesDisplay.stop()
     sessionTokenBag.clear()
     deviceSession = nil
   }
@@ -555,6 +605,7 @@ final class CameraViewModel {
     frameUploader.setStreaming(
       isSessionActive && isStreaming && UIApplication.shared.applicationState != .background
     )
+    refreshDetectionHUD()
   }
 
   /// Single stream-teardown convergence point.

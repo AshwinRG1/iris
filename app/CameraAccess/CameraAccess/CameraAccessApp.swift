@@ -10,7 +10,7 @@
 // CameraAccessApp.swift
 //
 // Main entry point for the CameraAccess sample app demonstrating the Meta Wearables DAT SDK.
-// This app shows how to connect to wearable devices (like Ray-Ban Meta smart glasses),
+// This app shows how to connect to Meta Ray-Ban Display glasses,
 // stream live video from their cameras, and capture photos. It provides a complete example
 // of DAT SDK integration including device registration, permissions, and media streaming.
 //

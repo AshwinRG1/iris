@@ -6,6 +6,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+import MWDATCore
 import MWDATMockDeviceTestClient
 import XCTest
 
@@ -119,7 +120,7 @@ final class CameraAccessUITests: XCTestCase {
   private func pairDeviceWithCameraResources() async {
     registerViaUI()
 
-    let deviceId = await mockClient.pairDevice()
+    let deviceId = await mockClient.pairDevice(deviceType: .metaRayBanDisplay)
     XCTAssertNotNil(deviceId, "pairDevice should return a deviceId")
     pairedDeviceId = deviceId
 
