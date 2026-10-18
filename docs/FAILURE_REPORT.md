@@ -78,7 +78,7 @@ The local `*_misses_at_015.csv` files include each missed GT box, its best IoU w
 4. Compare stock and v2 models at matched false-positive/precision budgets on verified validation data. Assess confidence tuning and input-resolution changes separately. A higher server image size cannot restore detail discarded by the phone's 640-pixel upload.
 5. Have D run final held-out testing only after selecting the model and threshold. B owns integration; measure actual alert recall, false alerts per minute, and latency.
 
-See [the full retraining handoff](RETRAINING_HANDOFF.md).
+See [the full retraining handoff](archive/RETRAINING_HANDOFF.md).
 
 ## Checkpoints and provenance
 
