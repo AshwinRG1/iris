@@ -6,7 +6,7 @@ The project is in development. The architecture and features below describe the 
 
 ## How it works
 
-1. Meta glasses, or the Mock Device Kit for demos, provide camera frames to the iOS app.
+1. Meta Ray-Ban Display glasses, or a matching Mock Device Kit device for demos, provide camera frames to the iOS app.
 2. The app sends JPEG frames at approximately 2–3 frames per second to the server.
 3. A YOLO26 detector locates people. The server uses confidence thresholds, consecutive detections, and a cooldown to control spoken alerts.
 4. The app receives a direction—left, ahead, or right—and speaks the alert.
