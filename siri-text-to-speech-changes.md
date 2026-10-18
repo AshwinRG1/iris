@@ -11,11 +11,12 @@ description text, and the app handles speech ordering and playback.
 Previously, the app spoke short server alerts, such as “Possible person, left.”
 Scene descriptions appeared on the status screen.
 
-Now, an alert can be followed by a spoken description, such as “Two people to
-your left.” The description also appears under **Iris status → Scene description**.
+Now, only Gemini descriptions, such as “Two people to your left,” are spoken.
+Alerts remain on screen, and descriptions also appear under
+**Iris status → Scene description**.
 
-- Alerts speak immediately and interrupt any current speech.
-- Descriptions wait until current speech finishes and never interrupt an alert.
+- Alerts are display-only and never start speech or a backup timer.
+- Descriptions wait until current speech finishes without interrupting it.
 - Only the newest waiting description is kept.
 - A waiting description is dropped if it has waited more than five seconds.
 - Each description ID is accepted once per streaming/settings session, preventing
@@ -39,7 +40,7 @@ Example `/frame` response:
 }
 ```
 
-The app submits the alert to the speaker first, then submits the description.
+The app submits only the description to the speaker and keeps alerts on screen.
 Both a description string and a non-null description ID are required for
 description speech. Replies with a missing or null ID still decode successfully
 and can display the description. Existing detection, alert, frame ID and server
@@ -53,18 +54,18 @@ are ignored. Identical text with a newer ID can be spoken again.
 Speech handling was moved from `FrameUploader.swift` into the new
 `FrameAlertSpeaker.swift` file.
 
-- `FrameAlertSpeaking` now includes `speakDescription(_:id:)` alongside the
-  existing alert and stop methods.
+- `FrameAlertSpeaking` exposes `speakDescription(_:id:)` and `stop()`; there is
+  no alert speech method or fallback timer.
 - `FrameAlertSpeaker` implements `AVSpeechSynthesizerDelegate` and tracks the
   current utterance immediately when speech is requested, including before a
   speech-start callback arrives.
 - Finish and cancellation callbacks release the current utterance and attempt
-  to speak the newest waiting description. Callbacks for interrupted or stopped
+  to speak the newest waiting description. Callbacks for completed or stopped
   utterances are ignored.
 - Delegate callbacks return to the main actor before updating speech state.
 - Empty or whitespace-only text is ignored. Blank descriptions do not consume
   their IDs.
-- Accepted IDs remain remembered when a description is replaced, interrupted or
+- Accepted IDs remain remembered when a description is replaced or
   expires, so repeated replies cannot revive it or extend its waiting deadline.
 - The five-second expiry follows the recommendation in ticket 08. Exactly five
   seconds is allowed; a longer wait causes the description to be dropped.
@@ -79,21 +80,21 @@ The recording audio-session configuration was not changed.
 
 | File | Change |
 | --- | --- |
-| [FrameUploader.swift](app/CameraAccess/CameraAccess/Media/FrameUploader.swift) | Decode optional description IDs and submit descriptions after alerts. |
-| [FrameAlertSpeaker.swift](app/CameraAccess/CameraAccess/Media/FrameAlertSpeaker.swift) | New speech implementation with alert priority, description deduplication, waiting, expiry and resets. Includes an injectable synthesizer boundary for tests. |
+| [FrameUploader.swift](app/CameraAccess/CameraAccess/Media/FrameUploader.swift) | Decode optional description IDs, speak only descriptions and keep alerts on screen. |
+| [FrameAlertSpeaker.swift](app/CameraAccess/CameraAccess/Media/FrameAlertSpeaker.swift) | Description speech with deduplication, waiting, expiry and resets. Includes an injectable synthesizer boundary for tests. |
 | [project.pbxproj](app/CameraAccess/CameraAccess.xcodeproj/project.pbxproj) | Register the new speech source file in the app target. |
 | [FrameAlertSpeakerTests.swift](app/CameraAccess/CameraAccessTests/FrameAlertSpeakerTests.swift) | New tests for speech behavior using a synthesizer spy without playing audio. |
-| [FrameUploaderTests.swift](app/CameraAccess/CameraAccessTests/FrameUploaderTests.swift) | Add coverage for optional IDs, alert-before-description submission, display-only legacy replies and speech reset calls. |
-| [app/README.md](app/README.md) | Document spoken descriptions, priority, expiry, compatibility and test coverage. |
+| [FrameUploaderTests.swift](app/CameraAccess/CameraAccessTests/FrameUploaderTests.swift) | Cover optional IDs, description-only speech, silent alerts, display-only legacy replies and speech reset calls. |
+| [app/README.md](app/README.md) | Document spoken descriptions, silent alerts, expiry, compatibility and test coverage. |
 
 Existing camera and detection-overlay edits were present before the speech work
 and are separate from the changes documented here.
 
 ## Validation completed
 
-- All 10 speech tests passed directly on macOS using a temporary Swift package
-  containing copies of the speech source and its test file. Coverage includes
-  repeated IDs, newer IDs with identical text, alert priority, replacement of
+- All 8 speech tests passed directly on macOS using a temporary Swift package
+  referencing the speech source and its test file. Coverage includes
+  repeated IDs, newer IDs with identical text, replacement of
   waiting descriptions, delayed callbacks, blank text, cancellation and resets.
   The expiry test checks waits of 4.999, 5.0 and 5.001 seconds.
 - The changed app code type-checked in Swift 6 mode against the iPhone SDK,
@@ -116,10 +117,10 @@ been verified.
 
 With the updated server and an iPhone build, verify:
 
-1. A short alert is followed by an audible description, aiming for the ticket's
-   approximately three-second timing target.
+1. Gemini descriptions are audible, while alert-only replies stay silent even
+   when no description follows.
 2. A stationary scene is not described repeatedly.
-3. A new alert interrupts a description, while descriptions wait behind alerts.
+3. New alerts do not interrupt speech, and descriptions wait for current speech.
 4. Stopping the stream or changing connection settings clears waiting speech.
 5. Speech reaches the intended phone or glasses output while recording is active.
 6. Multiple people receive the server's combined scene description, and the

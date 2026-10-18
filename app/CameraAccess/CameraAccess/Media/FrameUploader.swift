@@ -253,9 +253,8 @@ final class FrameUploader {
         if let alert = reply.alert, !alert.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
           lastAlert = alert
           lastAlertAt = lastResponseAt
-          speaker.scheduleAlert(alert)
         }
-        // Schedule first so a new description in this reply cancels the backup too.
+        // Only Gemini descriptions use speech; server alerts remain on screen.
         if let description = reply.description, let id = reply.descriptionID {
           speaker.speakDescription(description, id: id)
         }
