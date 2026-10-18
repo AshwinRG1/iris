@@ -9,7 +9,7 @@ This doc covers everything B owns: the FastAPI server, alert logic, live view, G
 - One FastAPI process, one uvicorn worker, all state in memory. No database.
 - Only inference leaves the event loop. It runs in a single worker-thread slot, and all state changes happen back on the event loop, so state has exactly one writer and needs no locks.
 - The alert policy is a pure function. It fires on 2 hits in the last 3 frames, with a 4 s cooldown and a 10 s same-side repeat limit. It is tested only through `POST /frame`, using a fake detector and a fake clock.
-- Gemini runs after an alert, in the background, with a timeout. A spoken alert never waits on it.
+- **Hybrid spoken descriptions.** The short alert is spoken instantly, as before. When an alert fires and a description is allowed, one background Gemini call returns one sentence about the scene (text only), and the app speaks it with the phone's voice about 1 to 2 s later. The alert never waits on Gemini and works with Gemini down.
 - Every single point of failure has a fallback (section 12):
   - systemd restarts the server if it crashes.
   - A deploy rolls back if the health check fails.
@@ -52,6 +52,7 @@ Response `200`:
   "detections": [{"label": "person", "conf": 0.71, "side": "left"}],
   "alert": "possible person, left",
   "description": null,
+  "description_id": null,
   "frame_id": 1842,
   "server_ms": 38
 }
@@ -61,9 +62,12 @@ Response `200`:
 | --- | --- | --- |
 | `detections` | contract | Boxes at or above `CONF_DETECT` with an alert label. `side` is `left`, `ahead` or `right`. |
 | `alert` | contract | The text to speak, or `null`. The server owns every rule behind it. |
-| `description` | new, optional | Gemini's one sentence for the latest event less than 10 s old, else `null`. For display, not for speech. |
+| `description` | new, optional | Gemini's one sentence for the latest event less than 10 s old, else `null`. The app **speaks** it, once per new `description_id`, after any alert that is playing (section 8). |
+| `description_id` | new, optional (ticket 08) | Integer, unique per description and increasing. `null` whenever `description` is `null`. The app speaks a description only when this id is new. |
 | `frame_id` | new, optional | Increments per frame. Lets A match app logs with server logs. |
 | `server_ms` | new, optional | Time from receiving the upload to the response being ready. A subtracts it from the round trip to get network time. |
+
+`description_id` ships with ticket 08, which also adds it to `frame-extended.json`. Until then the server never sends it. Both fields are additive: an app that doesn't know them ignores them, and `alert` keeps working without them.
 
 Errors use FastAPI's `{"detail": "..."}` shape. The app should treat any non-200 response as "no alert" and keep streaming.
 
@@ -99,7 +103,7 @@ Either side's PRs must be revertable without breaking the other side.
 
 | Method and path | Auth | Purpose |
 | --- | --- | --- |
-| `GET /health` | none | Readiness, active model, device, labels, image size, fps, server ms p50/p95, commit, tuning. p50/p95 cover the last 100 frames within 60 s and are null when none are in that window |
+| `GET /health` | none | Readiness, active model, device, labels, image size, fps, server ms p50/p95, commit, tuning, `describe` (`on` or `off`, the effective state) and `gemini_model` (the main model when on, else `null`; never the key). p50/p95 cover the last 100 frames within 60 s and are null when none are in that window |
 | `GET /` | key, as `?key=` | Live view page |
 | `GET /latest.jpg` | key, as `?key=` | The last frame received, as raw JPEG |
 | `GET /latest` | key, as `?key=` | `frame_id`, detections with normalized boxes, the time the frame arrived, `age_ms`, `boot_id`, and an optional `stale` (true once the published frame is more than 3 s old; `detections` is then empty) |
@@ -123,9 +127,11 @@ These terms are candidates for `GLOSSARY.md`; `/grill-with-docs` should settle t
 - **Cooldown**: the minimum time between any two alerts.
 - **Same-side repeat**: the minimum time between two alerts on the same side.
 - **Event**: the record of a fired alert: id, time, side, conf, frame and, later, a description.
-- **Description**: Gemini's one-sentence summary of an event's frame.
+- **Description**: Gemini's one sentence about the frame that fired an event, covering every kept box, grouped by side. The app speaks it after the alert.
+- **Description id**: an increasing integer per description, so the app speaks each description once.
+- **Described scene**: the boxes (side, center, area) of the last attached description and when it was attached. It is forgotten when the frame stays empty for `DESCRIBE_EMPTY_RESET_S`. An alert's scene is new when it differs from the described scene by count, sides, a large move or resize, or age (section 8).
 - **Detector**: an adapter from an image to detections. YOLO is one, and D's zero-shot model is another.
-- **Describer**: an adapter from a frame to a description (Gemini).
+- **Describer**: an adapter from a frame with its boxes drawn on, plus a line listing each box's side and conf, to a description (Gemini).
 - **Tuning**: the alert policy parameters that can change at runtime.
 - **Live view**: the browser page showing the latest frame, boxes and the event log.
 - **Replay harness**: a script that streams a video clip to the server the way the app does.
@@ -157,7 +163,8 @@ The team plan gives B `main.py`, `config.py` and `gemini.py`. This design propos
 | `server/alerts.py` | Alert policy: `decide(state, detections, now, tuning) -> (state, alert or None)` | `domain` |
 | `server/detector.py` | `Detector` protocol, the YOLO adapter (device, warmup, normalized boxes), and the zero-shot adapter that wraps D's `zeroshot.detect` | `domain`, ultralytics |
 | `server/zeroshot.py` (D) | A plain function `detect(image) -> list[dict]`, each dict holding `label`, `conf` and a normalized `box`. It never imports B's code. | transformers |
-| `server/gemini.py` | `Describer` protocol, plus the Gemini adapter (prompt, timeout) | google-genai |
+| `server/gemini.py` | `Describer` protocol, plus the Gemini adapter (prompt from `prompts/describe.txt`, timeout) | google-genai |
+| `server/prompts/describe.txt` | System instruction and few-shot examples for descriptions; `GEMINI_PROMPT_FILE` overrides the path | |
 | `server/store.py` | Latest frame snapshot, event ring buffer (200 events), rolling latency stats, JSONL logs | `domain` |
 | `server/pipeline.py` | Per frame: decode and detect in the worker slot, then policy, store and describe on the loop | everything above |
 | `server/config.py` | `Settings`, parsed from the environment once at startup | pydantic-settings |
@@ -200,7 +207,7 @@ class Detector(Protocol):
     def detect(self, image: np.ndarray) -> list[Detection]: ...
 
 class Describer(Protocol):
-    async def describe(self, jpeg: bytes) -> str: ...
+    async def describe(self, jpeg: bytes, boxes: str) -> str: ...  # boxes drawn on jpeg, listed in boxes
 
 class Clock(Protocol):
     def now_ms(self) -> int: ...                          # monotonic integer milliseconds
@@ -228,12 +235,12 @@ sequenceDiagram
   API->>W: decode + detect
   W-->>API: detections
   API->>API: alert policy, store update, frame log
-  opt alert fired and describer idle
-    API-)Gem: describe(frame), 6 s timeout
+  opt alert fired and a description is allowed
+    API-)Gem: describe(frame ≤640 px with boxes drawn, box list), 3 s per try, optional fallback once
   end
   API-->>App: detections, alert, description, frame_id, server_ms
   Gem--)API: description (later)
-  Note over API: attached to the event, returned in later replies for 10 s
+  Note over API: attached to the event with a new description_id, returned in later replies for 10 s
 ```
 
 1. **Auth.** If a key is configured, compare `X-Iris-Key` against it with `hmac.compare_digest`. Return 401 if it doesn't match.
@@ -242,8 +249,8 @@ sequenceDiagram
 4. **Side** comes from the box center x: left if below 1/3, right if above 2/3, otherwise ahead.
 5. **Alert policy** runs on the loop (section 7).
 6. **Store**: replace the latest-frame snapshot (raw JPEG bytes, detections, frame_id, `t_ms`, `at`), update the latency stats, and append one line to `logs/frames.jsonl`. If an alert fired, append an event to the ring buffer and to `logs/events.jsonl`.
-7. **Describe**: if an alert fired and no description is already running, start a background task. Hold a reference to the task in a set so it isn't garbage-collected. On success, write the description onto that event. The event loop is still the only writer.
-8. **Respond** with the latest event's description if the event is less than 10 s old.
+7. **Describe**: if an alert fired and a description is allowed (section 8: none in flight, describe cooldown over, scene new), draw every kept box on the frame and start a background task. Hold a reference to the task in a set so it isn't garbage-collected. On success, write the description and a new `description_id` onto that event, unless the answer is stale or a newer alert has fired. Every frame also updates the empty-frame timer that can forget the described scene. The event loop is still the only writer.
+8. **Respond** with the latest event's description and `description_id` if the event is less than 10 s old.
 
 **Why it's built this way:** an `async def` route that called the model directly would block the event loop, which is exactly what `fastapi-reviewer` flags. A plain `def` route runs in a thread pool, and then state would have many writers. Sending only the blocking call to one slot avoids both problems.
 
@@ -290,14 +297,67 @@ These rules are exact; the tests in section 13 come from them.
 
 The defaults are starting points. Tune them at Checkpoint 3 with `PUT /tuning` while the replay harness runs.
 
-## 8. Gemini descriptions
+## 8. Gemini descriptions (hybrid, spoken)
 
-- **Trigger:** only on a fired alert, and only if no description is already running. The cooldown already limits calls to at most one every 4 s.
-- **Input:** the JPEG of the frame that fired the alert.
-- **Prompt:** one sentence, at most 20 words, for a rescuer: how many people are visible, how exposed they are, and hazards nearby. It should hedge rather than claim certainty, and answer "unclear" if no person is visible.
-- **Model:** set by `GEMINI_MODEL`, using a current Flash model from AI Studio. The key is in `GEMINI_API_KEY`. `DESCRIBE=off` disables descriptions entirely.
-- **Failure:** after a 6 s timeout, an API error or an empty reply, the description stays `null` and the server logs a warning. `/frame` is never affected.
-- **Use:** A shows the description on the status screen, and the live view shows it next to the event. It is never spoken, since that would delay the next alert.
+The rescuer first hears the instant short alert ("possible person, left"). About 1 to 2 s later they hear one sentence from Gemini about the scene, read aloud by the phone's Apple voice (`AVSpeechSynthesizer`, already in the app). Gemini returns **text only**: no Gemini TTS and no audio.
+
+**Flow**
+
+1. **Unchanged:** the detector and the alert policy. `/frame` still carries `alert`, the app still speaks it instantly, and it stays the safety signal that works with Gemini down.
+2. When an alert fires and a description is allowed (rules below), the server starts **one** background Gemini call with:
+   - the alerting frame's JPEG, scaled down to at most 640 px on the long side, with every kept detection box drawn on it and labeled with its side
+   - a text line listing each box's side and conf, for example `Boxes: left 0.92, left 0.71, ahead 0.61`
+3. Gemini returns one sentence. The server attaches it to the event that fired the alert, with a new `description_id`.
+4. `/frame` replies carry `description` and `description_id` while the event is less than 10 s old. `/events` and the live view show the description beside the event.
+5. The app speaks `description` once per new `description_id`, after any alert that is playing.
+
+**Several people:** one call per allowed alert covers every box in the frame and returns one sentence grouped by direction, for example "Three possible people: two to your left in the water, one ahead on a roof." More than three people are summarized ("several people ahead").
+
+**Anti-spam rules (server)**
+
+- **Existing guards stay:** the 4 s alert cooldown, the 10 s same-side repeat, and at most one Gemini call in flight.
+- **`DESCRIBE_COOLDOWN_S` (default 15) is the overall cap:** at most one call per window, counted from the last attempt (failed attempts count too, so a failing API isn't hammered). No trigger below can get around it. Short alerts aren't affected.
+- **Describe only a new scene.** Descriptions still start only on an alert. The alerting frame's scene is new, and a description is allowed after the cooldown, when any of these hold:
+  1. **Count or sides changed:** the person count or the set of sides differs from the described scene.
+  2. **Emptied and refilled:** frames with no person for `DESCRIBE_EMPTY_RESET_S` (default 3) make the server forget the described scene, so whoever appears next is new. This is tracked on every frame, not only on alerts. A pause with no frames at all doesn't count as empty: the empty run restarts after a gap longer than `DESCRIBE_EMPTY_RESET_S`.
+  3. **Moved or resized:** each box is matched to a described box on the same side, by nearest center (on each side, boxes pair up in left-to-right order, which is the nearest-center pairing). The scene is new if a matched box's center moves more than `DESCRIBE_MOVE_FRAC` (default 0.25) of the frame width, or its area changes by more than `DESCRIBE_AREA_FRAC` (default 0.5) of the described area. This catches a new person swapping in on the same side.
+  4. **Reset:** `DESCRIBE_SCENE_RESET_S` (default 60) since the alert that was last described, even if nothing else changed.
+
+  Otherwise the scene is unchanged and Gemini isn't called. A person standing still alerts every 10 s (same-side repeat), but is described once and then again only after 60 s.
+- The described scene is recorded only when a description is attached. A failed, stale or dropped answer leaves it as it was, so the same scene is tried again after the cooldown. If the scene was forgotten (trigger 2) while the call was running, the answer is still spoken but the scene isn't recorded.
+- **Stale drop:** if Gemini answers more than `DESCRIBE_MAX_AGE_S` (default 5, at most 10) after the alert, or after a newer alert has fired, discard the answer.
+
+**Speaking rules (app, owned by A)**
+
+- Speak each `description_id` at most once. Keep showing the text on screen.
+- A new short alert interrupts a description. A description never interrupts an alert: it waits for the alert to finish, and if another description is already waiting, only the newest is kept.
+
+**Prompt**
+
+- Lives in `server/prompts/describe.txt`. `GEMINI_PROMPT_FILE` overrides the path, so the wording can be tuned on the box with a restart and no redeploy.
+- The file includes 2 or 3 few-shot examples, at least one an ordinary indoor scene ("Possible person ahead, seated at a desk indoors").
+- Default system instruction:
+
+> You assist search-and-rescue teams. You see one frame from a camera worn by a rescuer during disaster response, such as a flood, hurricane, earthquake or fire. Highlighted boxes mark possible people found by a detector, each with its direction (left, ahead, right) and a confidence score.
+>
+> In one sentence of at most 20 words, tell the rescuer where the highlighted people are and what they are on, in or near: for example in water, on a roof, under debris or beside a vehicle. Group people by direction; if there are more than three, summarize. Mention an immediate hazard only if one is clearly visible.
+>
+> Describe only what is visible. Many frames are not disasters: if the scene looks ordinary, describe it plainly and do not invent water, damage or danger. Use "possible" or "appears to" when unsure. If a box does not seem to contain a person, say "unclear".
+>
+> Speak directly to the rescuer ("to your left"). No preamble, no lists.
+
+**Model and key:** `GEMINI_MODEL` (default `gemini-3.5-flash-lite`) is the main model, and the key is in `GEMINI_API_KEY`. On the box, with a real frame, it answered in about 1 s, while `gemini-3.6-flash` timed out at 3 s and then got 429s. `GEMINI_THINKING_LEVEL` (`minimal`, `low`, `medium` or `high`) sets the main model's thinking; the default is empty, which sends no thinking setting, so the model keeps its own (minimal for 3.5 Flash-Lite). `GEMINI_FALLBACK_MODEL` (default empty, meaning none) is an optional second model, sent with no thinking setting. It gets one retry when the main model times out or answers 503. A missing key means descriptions are off, with a startup warning: never a crash and never a failed health check. The key is never logged. `/health` reports `describe` (on or off) and `gemini_model`, never the key. `DESCRIBE=off` is the kill switch.
+
+**Deadline and fallback:** the whole description must arrive within `DESCRIBE_MAX_AGE_S` (5 s) of the alert. Each attempt waits at most `GEMINI_TIMEOUT_S` (3 s, never more than `DESCRIBE_MAX_AGE_S`) or the time left, whichever is shorter. After a timeout or a 503 from the main model, the fallback model, if one is set, gets one retry when at least 0.5 s is left. Other errors (400, 403, 429) don't retry.
+
+**Failure:** a timeout, an API error, an empty reply or a stale answer, after the fallback if there is one, leaves `description` `null` and logs a warning. Alerts and `/frame` are never affected.
+
+**Rollout**
+
+1. Before work starts, tag the current `main` as `pre-gemini` and push the tag.
+2. Build 08 on the branch `gemini-voice`. Open the PR, but don't merge it until it's tested on the box.
+3. Test on the box with `update.sh gemini-voice`. Revert with `update.sh main` or `update.sh pre-gemini`.
+4. A builds the speaking change on a matching app branch and tests it against the box while it runs `gemini-voice`.
 
 ## 9. Live view
 
@@ -443,10 +503,21 @@ WINDOW_MAX_AGE_S=2
 IRIS_API_KEY=
 DESCRIBE=on
 GEMINI_API_KEY=
-GEMINI_MODEL=
-GEMINI_TIMEOUT_S=6
+GEMINI_MODEL=gemini-3.5-flash-lite
+GEMINI_THINKING_LEVEL=
+GEMINI_FALLBACK_MODEL=
+GEMINI_TIMEOUT_S=3
+DESCRIBE_COOLDOWN_S=15
+DESCRIBE_EMPTY_RESET_S=3
+DESCRIBE_MOVE_FRAC=0.25
+DESCRIBE_AREA_FRAC=0.5
+DESCRIBE_SCENE_RESET_S=60
+DESCRIBE_MAX_AGE_S=5
+GEMINI_PROMPT_FILE=
 MAX_UPLOAD_BYTES=2000000
 ```
+
+An empty `GEMINI_API_KEY` turns descriptions off with a startup warning. An empty `GEMINI_PROMPT_FILE` uses `server/prompts/describe.txt`.
 
 ### Failure modes
 
@@ -456,7 +527,8 @@ MAX_UPLOAD_BYTES=2000000
 | A request hangs | The app's 1.5 s timeout drops it and the next frame goes out | Automatic (A) |
 | A bad deploy | `update.sh` sees `/health` never report ready | Automatic rollback to the previous commit |
 | C's weights fail to load | The server falls back to stock `yolo26s` and `/health` says so | Automatic. Fix and redeploy. |
-| Gemini is slow or down | `description` stays `null` | Automatic. Alerts are unaffected. |
+| Gemini is slow, down, empty or late (past `DESCRIBE_MAX_AGE_S`) | `description` stays `null` and a warning is logged. The short alert is still spoken. | Automatic. `DESCRIBE=off` is the kill switch. |
+| `GEMINI_API_KEY` is missing | Descriptions are off, with a startup warning. `/health` still reports ready. | Set the key and restart. |
 | The Vultr box or its network goes down | Requests time out | The app switches to the fallback URL after 3 failures in a row (A) |
 | Venue wifi goes down | The phone uses cellular to reach Vultr | The laptop fallback runs on a phone hotspot |
 | The TLS certificate can't be issued | Caddy keeps retrying | Get the certificate by hour 12, long before judging. Worst case, use the laptop. |
@@ -480,7 +552,8 @@ MAX_UPLOAD_BYTES=2000000
 **Process and secrets**
 - [ ] The service runs as the `iris` user with `NoNewPrivileges`, not as root.
 - [ ] Secrets live only in `/etc/iris.env` (mode 600) and local `.env` files. Only `.env.example` is committed.
-- [ ] Gemini can't be run up by strangers: it only fires on keyed requests, at most once per cooldown. Set a usage cap in AI Studio anyway.
+- [ ] Gemini can't be run up by strangers: it only fires after an alert on a keyed request, with at most one call in flight, at most one description per `DESCRIBE_COOLDOWN_S` (15 s), and none for an unchanged scene, so at most 240 calls an hour. Set a usage cap in AI Studio anyway.
+- [ ] `GEMINI_API_KEY` is never logged. `/health` reports `describe` and `gemini_model`, never the key.
 
 **After the event**
 - [ ] Confirm the teardown workflow destroyed the instance. A stopped instance still bills.
@@ -530,6 +603,25 @@ The expected values come from the rules in section 7, not from the code, and a p
 | 13 | Non-image body, 3 MB body, wrong key | 400, 413, 401 |
 | 14 | Left hit at 0.0, then right hit (conf 0.6) at 0.4 | Alert at 0.4 on the right: the window ignores sides |
 
+**Description scenarios (ticket 08).** These use a `FakeDescriber` only, never the real API:
+
+- Scenario 12 above: the describer sleeps past the timeout; `/frame` replies normally and `description` is `null`.
+- A frame with several people produces one call and one description.
+- A person standing still (alerting every 10 s) is described once and not again within 60 s. At the first alert at or after 60 s it is described again (trigger 4).
+- A change in person count or sides after the describe cooldown produces a new call (trigger 1).
+- Frames empty for at least 3 s and then a person produce a new call after the cooldown. Empty for less than 3 s and then the same scene produces none (trigger 2).
+- A center shift over 0.25 of the width, or an area change over 0.5, produces a new call after the cooldown. Smaller moves produce none (trigger 3).
+- A direct swap, where a new person appears in a clearly different position on the same side with no empty gap, is described at the first alert after the cooldown.
+- Triggers firing inside the cooldown, such as a side change and a move at 5 s and 10 s, produce no second call.
+- A failed or dropped answer leaves the described scene unchanged, so the same scene is tried again after the cooldown.
+- An answer that arrives after the scene emptied for 3 s doesn't record the scene. A pause in the stream doesn't count as empty.
+- An answer later than `DESCRIBE_MAX_AGE_S` is discarded.
+- When a fallback model is set, a timeout or 503 from the main model retries once with it, within the deadline. A 400 or 429 doesn't retry, and neither does a deadline with under 0.5 s left.
+- The image sent to Gemini is at most 640 px on the long side.
+- `description_id` increases, and is `null` whenever `description` is `null`.
+- A missing `GEMINI_API_KEY` means descriptions are off.
+- The image passed to the describer has the boxes drawn on it.
+
 ## 14. Tickets
 
 These are tracer-bullet slices for `/to-tickets`. Each one is demoable on its own.
@@ -543,7 +635,7 @@ These are tracer-bullet slices for `/to-tickets`. Each one is demoable on its ow
 | 05 | **Vultr deploy.** Bootstrap, systemd, Caddy, `update.sh` with rollback, ONNX model on CPU, security checklist. | 01, 04 | The harness passes against the https URL with server p95 under 200 ms, the app works over cellular, killing the process recovers in about 2 s, a deliberately broken commit rolls back by itself, and a dry run of the teardown workflow lists the instance. Start early (hour 3–12), as the plan says. |
 | 06 | **Live view and events.** `/latest`, `/latest.jpg`, `/events` and the page. | 02 | A mock clip from the app shows boxes and the event log. This is **Checkpoint 2**. |
 | 07 | **Detector swap.** C's `best.pt`, label mapping, fallback to stock, and the adapter for D's zero-shot `detect`. | 01 | `/health` shows C's model, the harness shows its alerts, and deleting the weights falls back cleanly. |
-| 08 | **Gemini descriptions.** Async on alerts, in `/frame`, `/events` and the live view. | 02, 06 | Scenario 12 passes, and a real alert shows a description within about 3 s. |
+| 08 | **Hybrid spoken descriptions.** On an allowed alert, one background Gemini call (text only) on the alerting frame with boxes drawn; `description` and the new `description_id` in `/frame`, plus `/events` and the live view; describe cooldown, unchanged-scene skip, stale drop; prompt file. Built on branch `gemini-voice` from the `pre-gemini` tag (section 8). | 02, 06 | The description scenarios in section 13 pass. On the box: a real alert is followed by a spoken description within about 3 s, a person standing still gets no repeat description, two people get one combined sentence, and the office demo video gets no invented disaster details. |
 | 09 | **Runtime tuning.** `GET`/`PUT /tuning` plus controls in the live view. | 02, 04, 06 | You can tune during a harness run without a restart. Used for **Checkpoint 3**. |
 
 **Waves**
@@ -599,7 +691,7 @@ The tickets in section 14 map one-to-one to PRs, except 01 and 05, which are spl
 | 7 | 05b: `update.sh` with rollback | infra |
 | 8 | 06: live view and events | server |
 | 9 | 07: detector swap, label check, ONNX | server |
-| 10 | 08: Gemini descriptions, behind `DESCRIBE` | server, contract |
+| 10 | 08: hybrid spoken descriptions, behind `DESCRIBE` | server, contract |
 | 11 | 09: runtime tuning | server |
 
 ### When something breaks
@@ -610,7 +702,7 @@ Try the move that doesn't need git first. It's faster in the middle of a demo.
 | --- | --- | --- |
 | Alerts change for the worse after a new model | Point `MODEL_PATH` back at the previous version and restart | Tell C. No revert needed. |
 | No alerts at all after a new model | Check `/health` for class names; the label check should already have fallen back | Fix `ALERT_LABELS` |
-| Gemini errors or slows things down | Set `DESCRIBE=off` and restart | Revert PR 10 |
+| Gemini errors, slows things down or says something wrong | Set `DESCRIBE=off` and restart | `update.sh pre-gemini`, then revert PR 10 |
 | The app gets 401s | Unset `IRIS_API_KEY` and restart | Fix the app's key setting |
 | The app can't decode replies after a server deploy | `update.sh <previous sha>` | `git revert` the server PR, then check the fixtures |
 | A new server commit misbehaves | `update.sh <previous sha>`. A failed health check rolls back on its own. | `git revert <sha>` on `main` |
@@ -657,7 +749,7 @@ The whole agent setup is personal to B. Nothing it creates is committed, so team
 
 ## 17. Open questions for the team
 
-1. **A:** OK to add `description`, `frame_id`, `server_ms` and the `X-Iris-Key` header? Three app-side requests for reliability and speed:
+1. **A:** OK to add `description`, `frame_id`, `server_ms` and the `X-Iris-Key` header? For ticket 08: OK to add `description_id`, and to speak each new description once, after alerts (section 8)? Three app-side requests for reliability and speed:
    - Use one shared `URLSession` for all uploads.
    - Set a 1.5 s timeout per request.
    - Keep a primary and a fallback server URL, switching to the fallback after 3 failures in a row and showing which one is active on the status screen.
