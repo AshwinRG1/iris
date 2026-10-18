@@ -166,6 +166,7 @@ struct FrameUploaderTests {
     let uploaded = try #require(UIImage(data: jpeg)?.cgImage)
     #expect(uploaded.width == 640, "A Retina source must still upload exactly 640 pixels wide")
     #expect(uploaded.height == 360)
+    #expect(uploader.lastFrameSize == image.size, "Box mapping must use the uploaded frame's source aspect ratio")
     #expect(harness.speaker.requests.isEmpty)
     #expect(uploader.lastAlert == "possible person, left")
     #expect(uploader.lastAlertAt != nil)
@@ -380,6 +381,7 @@ struct FrameUploaderTests {
       #expect(uploader.detections.isEmpty)
       #expect(uploader.lastResponseAt == nil)
       #expect(uploader.held == held)
+      #expect(uploader.lastFrameSize == image.size, "Held boxes keep their frame geometry through failed uploads")
       uploader.expireHeldDetections(at: receivedAt.addingTimeInterval(0.5))
       #expect(uploader.held == held, "An upload error must not gate held cards on raw lastResponseAt")
     }
@@ -406,6 +408,7 @@ struct FrameUploaderTests {
     default: uploader.serverKey = "replacement-key"
     }
     #expect(uploader.held == DetectionHold())
+    #expect(uploader.lastFrameSize == nil)
     #expect(uploader.detections.isEmpty)
     #expect(uploader.lastResponseAt == nil)
     #expect(harness.speaker.stopCount == stops + 1, "Reset pending speech and description IDs with the stream/settings")
