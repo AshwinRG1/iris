@@ -9,7 +9,7 @@ This doc covers everything B owns: the FastAPI server, alert logic, live view, G
 - One FastAPI process, one uvicorn worker, all state in memory. No database.
 - Only inference leaves the event loop. It runs in a single worker-thread slot, and all state changes happen back on the event loop, so state has exactly one writer and needs no locks.
 - The alert policy is a pure function. It fires on 2 hits in the last 3 frames, with a 4 s cooldown and a 10 s same-side repeat limit. It is tested only through `POST /frame`, using a fake detector and a fake clock.
-- **Hybrid spoken descriptions.** The short alert is spoken instantly, as before. When an alert fires and a description is allowed, one background Gemini call returns one sentence about the scene (text only), and the app speaks it with the phone's voice about 1 to 2 s later. The alert never waits on Gemini and works with Gemini down.
+- **Spoken descriptions.** When an alert fires and a description is allowed, one background Gemini call returns one sentence about the scene (text only), and the app speaks it with the phone's voice about 1 to 2 s later. The short alert is display-only: the app shows it but doesn't speak it (#44). The alert never waits on Gemini, and with Gemini down it still shows on screen and in the live view.
 - Every single point of failure has a fallback (section 12):
   - systemd restarts the server if it crashes.
   - A deploy rolls back if the health check fails.
@@ -61,8 +61,8 @@ Response `200`:
 | Field | Status | Meaning |
 | --- | --- | --- |
 | `detections` | contract | Boxes at or above `CONF_DETECT` with an alert label. `side` is `left`, `ahead` or `right`. |
-| `alert` | contract | The text to speak, or `null`. The server owns every rule behind it. |
-| `description` | new, optional | Gemini's one sentence for the latest event less than 10 s old, else `null`. The app **speaks** it, once per new `description_id`, after any alert that is playing (section 8). |
+| `alert` | contract | The short alert text, or `null`. The server owns every rule behind it. The app shows it on screen and doesn't speak it (section 8). |
+| `description` | new, optional | Gemini's one sentence for the latest event less than 10 s old, else `null`. The app **speaks** it, once per new `description_id` (section 8). Descriptions are the only thing the app speaks. |
 | `description_id` | new, optional (ticket 08) | Integer, unique per description and increasing. `null` whenever `description` is `null`. The app speaks a description only when this id is new. |
 | `frame_id` | new, optional | Increments per frame. Lets A match app logs with server logs. |
 | `server_ms` | new, optional | Time from receiving the upload to the response being ready. A subtracts it from the round trip to get network time. |
@@ -109,7 +109,7 @@ Either side's PRs must be revertable without breaking the other side.
 | `GET /latest` | key, as `?key=` | `frame_id`, detections with normalized boxes, the time the frame arrived, `age_ms`, `boot_id`, and an optional `stale` (true once the published frame is more than 3 s old; `detections` is then empty) |
 | `GET /events?since=<id>` | key, as `?key=` | Recent events: id, `at` (wall-clock UTC, ISO 8601), side, conf, description |
 | `GET /tuning` | none | The current tuning values |
-| `PUT /tuning` | key | Changes tuning at runtime. Validated, kept in memory, reset to env defaults on restart. |
+| `PUT /tuning` | key | Ticket 09, **cut**: not built. It was to change tuning at runtime. Change settings in `/etc/iris.env` and restart instead. |
 
 The live view endpoints (`/`, `/latest.jpg`, `/latest` and `/events`) show the camera feed, so when `IRIS_API_KEY` is set they require the same key as a `?key=` query parameter. Open the live view at `/?key=<key>`; the page passes the key along on its own polls. With the key unset, as in local dev, everything stays open. `/health` and `GET /tuning` stay open, since they don't show the feed and `update.sh` and the preflight check need `/health`. This changes nothing for A.
 
@@ -127,7 +127,7 @@ These terms are candidates for `GLOSSARY.md`; `/grill-with-docs` should settle t
 - **Cooldown**: the minimum time between any two alerts.
 - **Same-side repeat**: the minimum time between two alerts on the same side.
 - **Event**: the record of a fired alert: id, time, side, conf, frame and, later, a description.
-- **Description**: Gemini's one sentence about the frame that fired an event, covering every kept box, grouped by side. The app speaks it after the alert.
+- **Description**: Gemini's one sentence about the frame that fired an event, covering every kept box, grouped by side. It is the only thing the app speaks.
 - **Description id**: an increasing integer per description, so the app speaks each description once.
 - **Described scene**: the boxes (side, center, area) of the last attached description and when it was attached. It is forgotten when the frame stays empty for `DESCRIBE_EMPTY_RESET_S`. An alert's scene is new when it differs from the described scene by count, sides, a large move or resize, or age (section 8).
 - **Detector**: an adapter from an image to detections. YOLO is one, and D's zero-shot model is another.
@@ -295,21 +295,21 @@ These rules are exact; the tests in section 13 come from them.
 - **Same-side repeat.** Without this, a person who stays in view gets announced every 4 s. A new person on another side is still announced after the 4 s cooldown.
 - **Server clock**, read through an injected monotonic `Clock` in integer ms. The phone's clock is never used.
 
-The defaults are starting points. Tune them at Checkpoint 3 with `PUT /tuning` while the replay harness runs.
+The defaults are starting points. Tune them in `/etc/iris.env` on the box and run `systemctl restart iris`; runtime tuning (ticket 09) is cut.
 
-## 8. Gemini descriptions (hybrid, spoken)
+## 8. Gemini descriptions (spoken)
 
-The rescuer first hears the instant short alert ("possible person, left"). About 1 to 2 s later they hear one sentence from Gemini about the scene, read aloud by the phone's Apple voice (`AVSpeechSynthesizer`, already in the app). Gemini returns **text only**: no Gemini TTS and no audio.
+About 1 to 2 s after an alert, the rescuer hears one sentence from Gemini about the scene, read aloud by the phone's Apple voice (`AVSpeechSynthesizer`). The short alert ("possible person, left") is display-only: the app shows it on screen but doesn't speak it (#44). Gemini returns **text only**: no Gemini TTS and no audio.
 
 **Flow**
 
-1. **Unchanged:** the detector and the alert policy. `/frame` still carries `alert`, the app still speaks it instantly, and it stays the safety signal that works with Gemini down.
+1. **Unchanged:** the detector and the alert policy. `/frame` still carries `alert`, and it works with Gemini down. The app shows it on screen, and the live view lists it, but neither speaks it.
 2. When an alert fires and a description is allowed (rules below), the server starts **one** background Gemini call with:
    - the alerting frame's JPEG, scaled down to at most 640 px on the long side, with every kept detection box drawn on it and labeled with its side
    - a text line listing each box's side and conf, for example `Boxes: left 0.92, left 0.71, ahead 0.61`
 3. Gemini returns one sentence. The server attaches it to the event that fired the alert, with a new `description_id`.
 4. `/frame` replies carry `description` and `description_id` while the event is less than 10 s old. `/events` and the live view show the description beside the event.
-5. The app speaks `description` once per new `description_id`, after any alert that is playing.
+5. The app speaks `description` once per new `description_id`.
 
 **Several people:** one call per allowed alert covers every box in the frame and returns one sentence grouped by direction, for example "Three possible people: two to your left in the water, one ahead on a roof." More than three people are summarized ("several people ahead").
 
@@ -329,8 +329,13 @@ The rescuer first hears the instant short alert ("possible person, left"). About
 
 **Speaking rules (app, owned by A)**
 
-- Speak each `description_id` at most once. Keep showing the text on screen.
-- A new short alert interrupts a description. A description never interrupts an alert: it waits for the alert to finish, and if another description is already waiting, only the newest is kept.
+These match the app on `main` since #44.
+
+- **Speak only descriptions:** each new `description_id`, at most once. The short alert is display-only: it is shown on screen and never spoken, not even as a backup when Gemini fails.
+- **Queueing:** a description that arrives while another is playing waits for it to finish. If one is already waiting, only the newest is kept. A description that waited more than 5 s is dropped.
+- **On screen:** keep showing the description text.
+- **Gemini off or failing:** nothing is spoken for that alert. It still shows on screen and in the live view.
+- **Known limitation, server restart:** `description_id` starts again at 1 when the server restarts, for example on `update.sh`. The app ignores ids at or below the last one it heard until streaming restarts. After a server restart, stop and restart streaming in the app to hear new descriptions.
 
 **Prompt**
 
@@ -527,7 +532,7 @@ An empty `GEMINI_API_KEY` turns descriptions off with a startup warning. An empt
 | A request hangs | The app's 1.5 s timeout drops it and the next frame goes out | Automatic (A) |
 | A bad deploy | `update.sh` sees `/health` never report ready | Automatic rollback to the previous commit |
 | C's weights fail to load | The server falls back to stock `yolo26s` and `/health` says so | Automatic. Fix and redeploy. |
-| Gemini is slow, down, empty or late (past `DESCRIBE_MAX_AGE_S`) | `description` stays `null` and a warning is logged. The short alert is still spoken. | Automatic. `DESCRIBE=off` is the kill switch. |
+| Gemini is slow, down, empty or late (past `DESCRIBE_MAX_AGE_S`) | `description` stays `null` and a warning is logged. Nothing is spoken; the short alert still shows on screen and in the live view. | Automatic. `DESCRIBE=off` is the kill switch. |
 | `GEMINI_API_KEY` is missing | Descriptions are off, with a startup warning. `/health` still reports ready. | Set the key and restart. |
 | The Vultr box or its network goes down | Requests time out | The app switches to the fallback URL after 3 failures in a row (A) |
 | Venue wifi goes down | The phone uses cellular to reach Vultr | The laptop fallback runs on a phone hotspot |
@@ -636,18 +641,18 @@ These are tracer-bullet slices for `/to-tickets`. Each one is demoable on its ow
 | 06 | **Live view and events.** `/latest`, `/latest.jpg`, `/events` and the page. | 02 | A mock clip from the app shows boxes and the event log. This is **Checkpoint 2**. |
 | 07 | **Detector swap.** C's `best.pt`, label mapping, fallback to stock, and the adapter for D's zero-shot `detect`. | 01 | `/health` shows C's model, the harness shows its alerts, and deleting the weights falls back cleanly. |
 | 08 | **Hybrid spoken descriptions.** On an allowed alert, one background Gemini call (text only) on the alerting frame with boxes drawn; `description` and the new `description_id` in `/frame`, plus `/events` and the live view; describe cooldown, unchanged-scene skip, stale drop; prompt file. Built on branch `gemini-voice` from the `pre-gemini` tag (section 8). | 02, 06 | The description scenarios in section 13 pass. On the box: a real alert is followed by a spoken description within about 3 s, a person standing still gets no repeat description, two people get one combined sentence, and the office demo video gets no invented disaster details. |
-| 09 | **Runtime tuning.** `GET`/`PUT /tuning` plus controls in the live view. | 02, 04, 06 | You can tune during a harness run without a restart. Used for **Checkpoint 3**. |
+| 09 | ~~**Runtime tuning.** `GET`/`PUT /tuning` plus controls in the live view.~~ **Cut:** there are no live demos, so runtime tuning isn't needed. Settings change in `/etc/iris.env` and a restart. | 02, 04, 06 | Not built. |
 
 **Waves**
 
 1. **Wave 1:** 01.
 2. **Wave 2:** 02, 03 and 04, in parallel.
 3. **Wave 3:** 05, 06 and 07. Ticket 04 is small, so the deploy still lands in the plan's hour 3–12 window.
-4. **Wave 4:** 08 and 09.
+4. **Wave 4:** 08. (09 is cut.)
 
 Each route group has its own module, so `main.py` only gains one `include_router` line per ticket. That makes merge conflicts trivial for the merger subagent.
 
-**Cut order** if you fall behind (matching the team plan): 09, then 08, then 05 (stay on the laptop with a hotspot). Never cut 01, 02 or 03.
+**Cut order** if you fall behind (matching the team plan): 09, then 08, then 05 (stay on the laptop with a hotspot). Never cut 01, 02 or 03. **09 is cut** (no live demos; settings change in `/etc/iris.env` and a restart). 08 and 05 shipped.
 
 ## 15. Small PRs and reverts
 
@@ -692,7 +697,7 @@ The tickets in section 14 map one-to-one to PRs, except 01 and 05, which are spl
 | 8 | 06: live view and events | server |
 | 9 | 07: detector swap, label check, ONNX | server |
 | 10 | 08: hybrid spoken descriptions, behind `DESCRIBE` | server, contract |
-| 11 | 09: runtime tuning | server |
+| 11 | 09: runtime tuning (**cut**, not built) | server |
 
 ### When something breaks
 
