@@ -346,7 +346,7 @@ The rescuer first hears the instant short alert ("possible person, left"). About
 >
 > Speak directly to the rescuer ("to your left"). No preamble, no lists.
 
-**Model and key:** `GEMINI_MODEL` (default `gemini-3.6-flash`, asked for `thinkingLevel: low`) is the main model, and the key is in `GEMINI_API_KEY`. `GEMINI_FALLBACK_MODEL` (default `gemini-3.1-flash-lite`, sent with no thinking setting; empty means none) gets one retry when the main model times out or answers 503. A missing key means descriptions are off, with a startup warning: never a crash and never a failed health check. The key is never logged. `/health` reports `describe` (on or off) and `gemini_model`, never the key. `DESCRIBE=off` is the kill switch.
+**Model and key:** `GEMINI_MODEL` (default `gemini-3.6-flash`, asked for `thinkingLevel: low`) is the main model, and the key is in `GEMINI_API_KEY`. `GEMINI_FALLBACK_MODEL` (default `gemini-3.5-flash-lite`, sent with no thinking setting so it keeps its default of minimal; empty means none) gets one retry when the main model times out or answers 503. A missing key means descriptions are off, with a startup warning: never a crash and never a failed health check. The key is never logged. `/health` reports `describe` (on or off) and `gemini_model`, never the key. `DESCRIBE=off` is the kill switch.
 
 **Deadline and fallback:** the whole description must arrive within `DESCRIBE_MAX_AGE_S` (5 s) of the alert. Each attempt waits at most `GEMINI_TIMEOUT_S` (3 s, never more than `DESCRIBE_MAX_AGE_S`) or the time left, whichever is shorter. After a timeout or a 503 from the main model, the fallback model gets one retry if at least 0.5 s is left. Other errors (400, 403, 429) don't retry.
 
@@ -504,7 +504,7 @@ IRIS_API_KEY=
 DESCRIBE=on
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-3.6-flash
-GEMINI_FALLBACK_MODEL=gemini-3.1-flash-lite
+GEMINI_FALLBACK_MODEL=gemini-3.5-flash-lite
 GEMINI_TIMEOUT_S=3
 DESCRIBE_COOLDOWN_S=15
 DESCRIBE_EMPTY_RESET_S=3
