@@ -76,17 +76,17 @@ struct CameraView: View {
         topBar
           .padding(.horizontal, 20)
           .padding(.top, 16)
-          .padding(.bottom, 40)
+          .padding(.bottom, 16)
           .background(
             LinearGradient(colors: [.black.opacity(0.6), .clear], startPoint: .top, endPoint: .bottom)
               .edgesIgnoringSafeArea(.top)
           )
 
         if viewModel.showsLivePreview {
-          DetectionOverlayView(uploader: viewModel.frameUploader)
+          DetectionOverlayView(display: viewModel.glassesDisplay)
+        } else {
+          Spacer(minLength: 0)
         }
-
-        Spacer(minLength: 0)
 
         bottomBar
       }
@@ -110,8 +110,14 @@ struct CameraView: View {
     }
     .navigationBarHidden(true)
     .sheet(isPresented: $showUploadStatus) {
-      FrameUploadStatusView(uploader: viewModel.frameUploader)
+      FrameUploadStatusView(
+        uploader: viewModel.frameUploader,
+        display: viewModel.glassesDisplay,
+        canRetryDisplay: viewModel.isSessionActive,
+        retryDisplay: viewModel.retryGlassesDisplay
+      )
     }
+    .onDisappear { viewModel.endSession() }
   }
 
   // MARK: - Preview background

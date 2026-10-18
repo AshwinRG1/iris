@@ -31,12 +31,13 @@ final class ViewModelIntegrationTests: XCTestCase {
     MockDeviceKit.shared.enable()
 
     // Pair mock device and set up camera kit
-    let pairedMockDevice = try MockDeviceKit.shared.pairGlasses(model: .rayBanMeta)
+    let pairedMockDevice = try MockDeviceKit.shared.pairGlasses(model: .metaRayBanDisplay)
     mockDevice = pairedMockDevice
     cameraKit = pairedMockDevice.services.camera
 
     // Power on and don the device to make it available for session start.
     pairedMockDevice.powerOn()
+    pairedMockDevice.unfold()
     pairedMockDevice.don()
 
     // Wait for device to be available in Wearables
@@ -53,6 +54,37 @@ final class ViewModelIntegrationTests: XCTestCase {
   }
 
   // MARK: - Video Streaming Flow Tests
+
+  func testDisplayAndCameraShareTheSessionAndDisplayStopsInBackground() async throws {
+    let device = try XCTUnwrap(mockDevice)
+    let videoURL = try XCTUnwrap(Bundle.main.url(forResource: "plant", withExtension: "mp4"))
+    device.services.camera.setCameraFeed(fileURL: videoURL)
+
+    let viewModel = CameraViewModel(wearables: Wearables.shared)
+    self.viewModel = viewModel
+    await observeUntil(timeout: 5) { viewModel.hasActiveDevice }
+    viewModel.startSession()
+    await observeUntil(timeout: 10) { viewModel.glassesDisplay.isDelivered }
+    XCTAssertTrue(viewModel.glassesDisplay.isMockDisplay)
+    XCTAssertFalse(viewModel.hasStream)
+
+    await viewModel.startStreaming()
+    await observeUntil(timeout: 10) { viewModel.isStreaming && viewModel.hasReceivedFirstFrame }
+    XCTAssertEqual(viewModel.glassesDisplay.connection, .connected)
+    XCTAssertFalse(viewModel.showError)
+    viewModel.stopStreaming()
+    await observeUntil(timeout: 5) { !viewModel.hasStream }
+    XCTAssertTrue(viewModel.isSessionActive)
+    XCTAssertEqual(viewModel.glassesDisplay.connection, .connected)
+
+    // A display is active even without a camera stream, so backgrounding must
+    // also tear down display-only sessions.
+    NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+    await observeUntil(timeout: 5) { !viewModel.hasSession }
+    XCTAssertEqual(viewModel.glassesDisplay.connection, .disconnected)
+    XCTAssertFalse(viewModel.glassesDisplay.isDelivered)
+    XCTAssertFalse(viewModel.showError)
+  }
 
   func testVideoStreamingFlow() async throws {
     guard let camera = cameraKit else {

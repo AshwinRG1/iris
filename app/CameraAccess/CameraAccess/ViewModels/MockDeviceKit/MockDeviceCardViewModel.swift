@@ -53,7 +53,7 @@ final class MockDeviceCardViewModel {
   var id: String { device.deviceIdentifier }
 
   // Display name for the mock device in the UI
-  var deviceName: String { "Mock glasses" }
+  var deviceName: String { "Mock Meta Ray-Ban Display" }
 
   func powerOn() {
     device.powerOn()
