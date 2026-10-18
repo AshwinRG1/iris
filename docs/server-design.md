@@ -193,7 +193,7 @@ class Detection: label: str; conf: float; box: Box      # side is derived from b
 
 @dataclass(frozen=True)
 class Tuning:
-    conf_alert: float = 0.35; window: int = 3; needed: int = 2
+    conf_alert: float = 0.20; window: int = 3; needed: int = 2
     cooldown_ms: int = 4000; same_side_repeat_ms: int = 10000; window_max_age_ms: int = 2000
 
 @dataclass(frozen=True)
@@ -498,8 +498,8 @@ DETECTOR=yolo
 ALERT_LABELS=person
 IMGSZ=640
 DEVICE=
-CONF_DETECT=0.25
-CONF_ALERT=0.35
+CONF_DETECT=0.15
+CONF_ALERT=0.20
 WINDOW=3
 NEEDED=2
 COOLDOWN_S=4
@@ -596,7 +596,7 @@ The expected values come from the rules in section 7, not from the code, and a p
 | 1 | Hits at 0.0 and 0.4 | Alert at 0.4: `possible person, left` |
 | 2 | Hit, miss, hit at 0.0, 0.4, 0.8 | Alert at 0.8 |
 | 3 | Hit, miss, miss, hit at 0.0 to 1.2 | No alert |
-| 4 | Conf 0.30 every frame | Detections returned, no alert |
+| 4 | Conf 0.18 every frame (at or above `CONF_DETECT` 0.15, below `CONF_ALERT` 0.20) | Detections returned, no alert |
 | 5 | Hit on the left every frame from 0.0 to 15.6 | Alerts at 0.4 and 10.4 only |
 | 6 | Left hits at 0.0 and 0.4, misses, then right hits (conf 0.8) from 2.0 | Left at 0.4, right at 4.4 |
 | 7 | Hit at 0.0, a pause, then hits at 5.0 and 5.4 | Alert at 5.4 only |

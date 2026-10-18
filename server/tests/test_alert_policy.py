@@ -1,12 +1,14 @@
 """Alert policy scenarios from the spec, driven through POST /frame (times in ms)."""
 
+from pathlib import Path
+
 import pytest
 from conftest import FakeClock, FakeDescriber, FakeDetector, FakeWallClock, det, jpeg_bytes
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from config import Settings
-from domain import Detection
+from domain import Detection, Tuning
 from main import create_app
 
 Frames = list[tuple[int, list[Detection]]]
@@ -45,7 +47,7 @@ def test_two_hits_three_frames_apart_do_not_alert() -> None:  # scenario 3
 
 
 def test_detections_below_conf_alert_return_but_never_alert() -> None:  # scenario 4
-    weak = [det(conf=0.30, cx=0.1)]
+    weak = [det(conf=0.18, cx=0.1)]  # kept (>= CONF_DETECT 0.15), below CONF_ALERT 0.20
     assert run([(t, weak) for t in range(0, 2000, 400)]) == {}
 
 
@@ -82,7 +84,7 @@ def test_hits_from_before_a_pause_are_forgotten() -> None:  # scenario 7
         {"NEEDED": "0"},
         {"CONF_ALERT": "0"},
         {"CONF_ALERT": "1.5"},
-        {"CONF_ALERT": "0.2"},  # below the default CONF_DETECT of 0.25
+        {"CONF_ALERT": "0.1"},  # below the default CONF_DETECT of 0.15
         {"COOLDOWN_S": "inf"},
         {"COOLDOWN_S": "nan"},
         {"COOLDOWN_S": "-1"},
@@ -135,3 +137,18 @@ def test_a_frame_arriving_with_an_older_time_does_not_break_the_policy() -> None
 def test_a_hit_on_another_side_counts_toward_the_window() -> None:  # scenario 14
     right = [det(conf=0.6, cx=0.9)]
     assert run([(0, HIT), (400, right)]) == {400: "possible person, right"}
+
+
+def test_detection_thresholds_default_to_the_recall_tuning() -> None:
+    fields = Settings.model_fields
+    assert fields["conf_detect"].default == 0.15
+    assert fields["conf_alert"].default == 0.20
+    assert Settings().tuning.conf_alert == 0.20
+    assert Tuning().conf_alert == 0.20
+
+
+def test_env_example_lists_the_same_detection_thresholds() -> None:
+    example = (Path(__file__).resolve().parents[1] / ".env.example").read_text()
+    values = dict(line.split("=", 1) for line in example.splitlines() if line.startswith("CONF_"))
+    assert float(values["CONF_DETECT"]) == Settings.model_fields["conf_detect"].default
+    assert float(values["CONF_ALERT"]) == Settings.model_fields["conf_alert"].default

@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(frozen=True, populate_by_name=True)
 
     detector: Literal["yolo", "zeroshot"] = "yolo"
-    conf_detect: float = 0.25
+    conf_detect: float = 0.15
     alert_labels: str = "person"  # comma-separated
     model_path: str = "yolo26s.pt"
     imgsz: int = 640
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     max_upload_bytes: int = Field(default=2_000_000, gt=0)
 
     # Alert policy tuning. Seconds in the environment, ms inside.
-    conf_alert: float = 0.35
+    conf_alert: float = 0.20
     window: int = 3
     needed: int = 2
     cooldown_s: float = Field(default=4.0, ge=0, allow_inf_nan=False)
