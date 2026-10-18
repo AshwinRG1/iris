@@ -32,26 +32,39 @@ SECRET = "sekret-gemini-key"
 
 
 class Rig:
-    def __init__(self, describer: FakeDescriber | None, clock: SettableClock, **env: Any) -> None:
+    def __init__(
+        self,
+        describer: FakeDescriber | None,
+        clock: SettableClock,
+        fallback: FakeDescriber | None = None,
+        **env: Any,
+    ) -> None:
         self.detector = FakeDetector()
         settings = Settings(gemini_api_key=SecretStr(SECRET), **env)
-        app = create_app(self.detector, describer, clock, FakeWallClock(), settings)
+        app = create_app(
+            self.detector, describer, clock, FakeWallClock(), settings, fallback_describer=fallback
+        )
         self.clock = clock
         self.client = TestClient(app)
         self.runtime: Runtime = app.state.runtime
         self.describer = describer
 
-    def frame(self, t: int, dets: list[Detection]) -> dict[str, Any]:
+    def frame(
+        self, t: int, dets: list[Detection], size: tuple[int, int] = (64, 48)
+    ) -> dict[str, Any]:
         self.detector.script.append(dets)
         self.clock.t = t
-        r = self.client.post("/frame", files={"file": ("f.jpg", jpeg_bytes(), "image/jpeg")})
+        body = jpeg_bytes(*size)
+        r = self.client.post("/frame", files={"file": ("f.jpg", body, "image/jpeg")})
         assert r.status_code == 200, r.text
         reply: dict[str, Any] = r.json()
         return reply
 
-    def alert_at(self, t: int, dets: list[Detection]) -> dict[str, Any]:
-        self.frame(t - 400, dets)
-        reply = self.frame(t, dets)
+    def alert_at(
+        self, t: int, dets: list[Detection], size: tuple[int, int] = (64, 48)
+    ) -> dict[str, Any]:
+        self.frame(t - 400, dets, size)
+        reply = self.frame(t, dets, size)
         assert reply["alert"] is not None
         return reply
 
@@ -85,9 +98,12 @@ def make() -> Iterator[Make]:
     rigs: list[Rig] = []
 
     def _make(
-        describer: FakeDescriber | None, clock: SettableClock | None = None, **env: Any
+        describer: FakeDescriber | None,
+        clock: SettableClock | None = None,
+        fallback: FakeDescriber | None = None,
+        **env: Any,
     ) -> Rig:
-        rig = Rig(describer, clock or SettableClock(0), **env)
+        rig = Rig(describer, clock or SettableClock(0), fallback, **env)
         rig.client.__enter__()
         rigs.append(rig)
         return rig
@@ -469,3 +485,96 @@ def test_a_pause_in_the_stream_does_not_reset_the_scene(make: Make) -> None:
     rig.frame(10_800, [])  # ten seconds with no frames at all
     rig.alert_at(16_000, [A])
     assert not rig.runtime.describe_tasks and len(d.calls) == 1
+
+
+def _status_error(code: int) -> httpx.HTTPStatusError:
+    request = httpx.Request("POST", "https://example.test/")
+    return httpx.HTTPStatusError(
+        "x", request=request, response=httpx.Response(code, request=request)
+    )
+
+
+def test_a_timeout_on_the_main_model_tries_the_fallback(
+    make: Make, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.WARNING, logger="iris")
+    main, fb = FakeDescriber("main", gated=True), FakeDescriber("from the fallback")
+    rig = make(main, fallback=fb, gemini_timeout_s=0.3)
+    rig.alert_at(1000, [LEFT])
+    rig.described(1)
+    assert rig.events()[0]["description"] == "from the fallback"
+    assert len(main.calls) == 1 and len(fb.calls) == 1
+    assert "main model failed (TimeoutError); trying fallback" in caplog.text
+    assert fb.calls[0][1] == main.calls[0][1]  # the same boxes line, the same drawn image
+    assert fb.calls[0][0] == main.calls[0][0]
+
+
+def test_a_503_on_the_main_model_tries_the_fallback(make: Make) -> None:
+    main, fb = FakeDescriber(error=_status_error(503)), FakeDescriber("fb")
+    rig = make(main, fallback=fb)
+    rig.alert_at(1000, [LEFT])
+    rig.described(1)
+    assert len(fb.calls) == 1
+
+
+@pytest.mark.parametrize("code", [400, 403, 429])
+def test_other_errors_on_the_main_model_do_not_retry(make: Make, code: int) -> None:
+    main, fb = FakeDescriber(error=_status_error(code)), FakeDescriber("fb")
+    rig = make(main, fallback=fb)
+    rig.alert_at(1000, [LEFT])
+    wait_for(lambda: len(main.calls) == 1)
+    rig.idle()
+    assert fb.calls == [] and rig.events()[0]["description"] is None
+
+
+def test_no_fallback_configured_means_none_is_called(
+    make: Make, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.WARNING, logger="iris")
+    rig = make(FakeDescriber(error=TimeoutError()))
+    rig.alert_at(1000, [LEFT])
+    rig.idle()
+    assert rig.events()[0]["description"] is None and "TimeoutError" in caplog.text
+
+
+def test_too_little_budget_left_skips_the_fallback(make: Make) -> None:
+    clock = SettableClock(0)
+    # The main attempt ends 4.8 s in; 0.2 s of the 5 s budget is under the 0.5 s minimum.
+    main = FakeDescriber(error=TimeoutError(), clock=clock, advance_ms=4800)
+    fb = FakeDescriber("fb")
+    rig = make(main, clock, fallback=fb)
+    rig.alert_at(1000, [LEFT])
+    wait_for(lambda: len(main.calls) == 1)
+    rig.idle()
+    assert fb.calls == []
+
+
+def test_when_the_fallback_fails_too_the_description_stays_null(
+    make: Make, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.WARNING, logger="iris")
+    main = FakeDescriber(error=TimeoutError())
+    fb = FakeDescriber(error=_status_error(503))  # a 503 on the retry is not retried again
+    rig = make(main, fallback=fb)
+    rig.alert_at(1000, [LEFT])
+    rig.idle()
+    assert (len(main.calls), len(fb.calls)) == (1, 1)
+    assert rig.events()[0]["description"] is None
+    assert "HTTPStatusError 503" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("size", "expected"), [((1280, 720), (640, 360)), ((320, 240), (320, 240))]
+)
+def test_the_frame_is_shrunk_to_640_before_the_boxes_are_drawn(
+    make: Make, size: tuple[int, int], expected: tuple[int, int]
+) -> None:
+    d = FakeDescriber("x")
+    rig = make(d)
+    rig.alert_at(1000, [LEFT], size)
+    rig.described(1)
+    sent = Image.open(io.BytesIO(d.calls[0][0])).convert("RGB")
+    assert sent.size == expected
+    x, y = round(0.05 * expected[0]) + 1, expected[1] // 2  # on the left edge of the box
+    r, g, b = sent.getpixel((x, y))  # type: ignore[misc]
+    assert r > g + 60  # drawn red, not the gray frame

@@ -152,6 +152,8 @@ class Health(BaseModel):
     device: str
     load_error: str | None
     auth: Literal["on", "off"]
+    describe: Literal["on", "off"]  # the effective state: off also when the key is missing
+    gemini_model: str | None  # the main model while on; never the key
     model_file: str | None
     model_sha256: str | None
     class_names: list[str] | None
@@ -175,6 +177,8 @@ async def health(
         device=runtime.device,
         load_error=runtime.load_error,
         auth="on" if deps.settings.iris_api_key else "off",
+        describe="on" if deps.describer is not None else "off",
+        gemini_model=deps.settings.gemini_model.strip() if deps.describer is not None else None,
         model_file=info.file,
         model_sha256=info.sha256,
         class_names=None if info.class_names is None else list(info.class_names),

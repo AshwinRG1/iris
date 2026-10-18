@@ -9,7 +9,7 @@ from pydantic import SecretStr, ValidationError
 
 import gemini
 from config import Settings
-from main import build_describer
+from main import build_describer, build_fallback_describer
 
 SECRET = "sekret-gemini-key"
 PROMPT_DIR = Path(__file__).resolve().parents[1] / "prompts"
@@ -78,14 +78,14 @@ def test_build_describer_strips_the_key_and_passes_the_timeout(
     seen: list[tuple[object, ...]] = []
 
     class Spy:
-        def __init__(self, *args: object) -> None:
+        def __init__(self, *args: object, **kw: object) -> None:
             seen.append(args)
 
     monkeypatch.setattr("main.GeminiDescriber", Spy)
     build_describer(
         _settings(tmp_path, gemini_api_key=SecretStr(f"  {SECRET}\n"), gemini_timeout_s=2)
     )
-    assert seen == [(SECRET, "gemini-3.8-flash", "system text", 2.0)]
+    assert seen == [(SECRET, "gemini-3.6-flash", "system text", 2.0)]
 
 
 def test_build_describer_logs_one_info_line_when_on(
@@ -96,7 +96,7 @@ def test_build_describer_logs_one_info_line_when_on(
     assert d is not None
     asyncio.run(d.aclose())  # type: ignore[attr-defined]
     lines = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
-    assert len(lines) == 1 and "gemini-3.8-flash" in lines[0]
+    assert len(lines) == 1 and "gemini-3.6-flash" in lines[0]
     assert all(w in lines[0] for w in ("empty reset 3", "move 0.25", "area 0.5", "scene reset 60"))
     assert SECRET not in caplog.text
 
@@ -178,3 +178,47 @@ def test_prompt_file_has_the_instruction_and_an_indoor_example() -> None:
     assert "Speak directly to the rescuer" in text
     assert "seated at a desk indoors" in text
     assert text.count("Boxes:") >= 2
+
+
+def test_thinking_is_set_per_describer() -> None:
+    main = gemini.build_request("m", "k", "s", b"j", "b")[2]["generationConfig"]
+    assert main["thinkingConfig"] == {"thinkingLevel": "low"}
+    fallback = gemini.build_request("m", "k", "s", b"j", "b", thinking_level=None)[2]
+    assert "thinkingConfig" not in fallback["generationConfig"]
+
+
+def test_main_and_fallback_describers_get_their_models_and_thinking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    class Spy:
+        def __init__(self, *args: object, **kw: object) -> None:
+            seen.append((args, kw))
+
+    monkeypatch.setattr("main.GeminiDescriber", Spy)
+    s = _settings(tmp_path)
+    assert build_describer(s) is not None and build_fallback_describer(s) is not None
+    assert [(a[1], kw["thinking_level"]) for a, kw in seen] == [
+        ("gemini-3.6-flash", "low"),
+        ("gemini-3.1-flash-lite", None),
+    ]
+
+
+def test_an_empty_fallback_model_means_no_fallback(tmp_path: Path) -> None:
+    assert build_fallback_describer(_settings(tmp_path, gemini_fallback_model=" ")) is None
+
+
+def test_the_info_line_names_the_fallback(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="iris")
+    d = build_describer(_settings(tmp_path))
+    assert d is not None
+    asyncio.run(d.aclose())  # type: ignore[attr-defined]
+    assert "gemini-3.1-flash-lite" in caplog.text
+
+
+def test_the_gemini_timeout_may_equal_but_not_exceed_the_max_age() -> None:
+    Settings(gemini_timeout_s=5, describe_max_age_s=5)
+    with pytest.raises(ValidationError):
+        Settings(gemini_timeout_s=5.5, describe_max_age_s=5)
+    assert Settings().gemini_timeout_s == 3

@@ -22,9 +22,18 @@ class Closable(Protocol):
 
 
 def build_request(
-    model: str, api_key: str, system_instruction: str, jpeg: bytes, boxes: str
+    model: str,
+    api_key: str,
+    system_instruction: str,
+    jpeg: bytes,
+    boxes: str,
+    thinking_level: str | None = "low",
 ) -> tuple[str, dict[str, str], dict[str, Any]]:
     """The URL, headers and JSON body. The key travels in a header, never in the URL."""
+    generation: dict[str, Any] = {"maxOutputTokens": 1024}
+    if thinking_level is not None:
+        # Gemini 3 thinks at medium by default, too slow for a spoken line.
+        generation["thinkingConfig"] = {"thinkingLevel": thinking_level}
     body = {
         "systemInstruction": {"parts": [{"text": system_instruction}]},
         "contents": [
@@ -41,8 +50,7 @@ def build_request(
                 ],
             }
         ],
-        # Gemini 3 thinks at medium by default, too slow for a spoken line.
-        "generationConfig": {"thinkingConfig": {"thinkingLevel": "low"}, "maxOutputTokens": 1024},
+        "generationConfig": generation,
     }
     return _URL.format(model=model), {"x-goog-api-key": api_key}, body
 
@@ -60,7 +68,15 @@ def parse_text(payload: dict[str, Any]) -> str:
 
 
 class GeminiDescriber:
-    def __init__(self, api_key: str, model: str, system_instruction: str, timeout_s: float) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        system_instruction: str,
+        timeout_s: float,
+        thinking_level: str | None = "low",  # None: the model's own default
+    ) -> None:
+        self._thinking_level = thinking_level
         self._api_key = api_key
         self._model = model
         self._system_instruction = system_instruction
@@ -70,7 +86,12 @@ class GeminiDescriber:
 
     async def describe(self, jpeg: bytes, boxes: str) -> str:
         url, headers, body = build_request(
-            self._model, self._api_key, self._system_instruction, jpeg, boxes
+            self._model,
+            self._api_key,
+            self._system_instruction,
+            jpeg,
+            boxes,
+            self._thinking_level,
         )
         response = await self._client.post(url, headers=headers, json=body)
         response.raise_for_status()

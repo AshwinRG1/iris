@@ -29,6 +29,7 @@ class WallClock(Protocol):
 class Deps:
     detector: Detector
     describer: Describer | None  # None: descriptions are off
+    fallback_describer: Describer | None
     clock: Clock
     wall_clock: WallClock
     settings: Settings

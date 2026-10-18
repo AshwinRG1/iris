@@ -4,6 +4,8 @@
   "device": "cpu",
   "load_error": null,
   "auth": "on",
+  "describe": "on",
+  "gemini_model": "gemini-3.6-flash",
   "model_file": "iris-v1.onnx",
   "model_sha256": "9f2c4b7e1a8d3056c4e7b1f0a2d9863e5b4c7a10d8f3e2961b5a7c0d4e8f1a23",
   "class_names": ["person"],
