@@ -121,23 +121,20 @@ misses, dims to 50% while missing, and fades out after three misses or 1.2 secon
 since its last detection. Failed requests do not count as misses; the overlay
 also clears after two seconds without a successful frame reply. Stopping the
 preview or changing upload settings clears it immediately.
-Alerts and Gemini scene descriptions appear in status as replies arrive. Each
-server `alert` starts a four-second backup timer, replacing any pending timer.
-A new optional `description_id` cancels that backup and speaks the description
-once using the existing Apple text-to-speech voice. If no new description arrives
-in time, the alert is spoken instead, interrupting current speech. Descriptions
-wait for current speech; only the newest waiting description is kept, and it is
-dropped if it has waited more than five seconds. Stopping the preview, disabling
-uploads, or changing the server URL or key clears the backup timer, pending speech
-and remembered description IDs.
+Alerts and Gemini scene descriptions appear in status as replies arrive. Only
+Gemini descriptions are spoken, once per new optional `description_id`, using
+the existing Apple text-to-speech voice. Server alerts remain display-only.
+Descriptions wait for current speech; only the newest waiting description is
+kept, and it is dropped if it has waited more than five seconds. Stopping the
+preview, disabling uploads, or changing the server URL or key clears pending
+speech and remembered description IDs.
 Replies without `description_id` remain compatible and display descriptions only.
 
 `FrameUploaderTests` covers the shared JSON fixtures, multipart/JPEG formatting,
 background JPEG drawing, throttling, cancellation and recovery using an in-memory
 URL loading transport, plus held indicators across misses, errors and resets.
 `DetectionHoldTests` checks per-side history, dimming, expiry and future directions.
-`FrameAlertSpeakerTests` checks the four-second alert backup, cancellation by new
-descriptions, timer replacement, description deduplication, pending replacement,
+`FrameAlertSpeakerTests` checks description deduplication, pending replacement,
 expiry, delayed callbacks and resets without playing audio.
 `MockVideoPreparerTests` checks HEVC passthrough, temporary
 file ownership, 1080p conversion in both orientations, H.264 imports, B-frame

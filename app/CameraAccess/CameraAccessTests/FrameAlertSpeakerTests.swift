@@ -6,83 +6,6 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct FrameAlertSpeakerTests {
-  @Test(arguments: [0.0, 3.999])
-  func newDescriptionCancelsAlertBeforeFourSeconds(_ delay: TimeInterval) {
-    let harness = SpeechHarness()
-    harness.speaker.scheduleAlert("Possible person, left.")
-    #expect(harness.synthesizer.spoken.isEmpty)
-    harness.clock.advance(by: delay)
-    harness.speaker.speakDescription("Two people to your left.", id: 7)
-    #expect(harness.synthesizer.spoken == ["Two people to your left."])
-    #expect(harness.clock.pendingTimerCount == 0)
-    // Even a callback queued just before cancellation must not speak the alert.
-    harness.clock.fireEvenIfCancelled(0)
-    harness.clock.advance(by: 10)
-    #expect(harness.synthesizer.spoken == ["Two people to your left."])
-    #expect(harness.synthesizer.stopCount == 0)
-  }
-
-  @Test func alertIsSpokenAtFourSecondsWhenNoDescriptionArrives() {
-    let harness = SpeechHarness()
-    let deadline = harness.clock.time + 4
-    harness.speaker.scheduleAlert("Possible person, left.")
-    #expect(harness.synthesizer.spoken.isEmpty)
-    harness.clock.advance(to: deadline - 0.001)
-    #expect(harness.synthesizer.spoken.isEmpty)
-    harness.clock.advance(to: deadline)
-    #expect(harness.synthesizer.spoken == ["Possible person, left."])
-    #expect(harness.clock.pendingTimerCount == 0)
-    harness.clock.advance(by: 10)
-    #expect(harness.synthesizer.spoken.count == 1)
-  }
-
-  @Test(arguments: ["Possible person, right.", "Possible person, left."])
-  func twoAlertsReplaceTheTimerAndSpeakOnlyTheLatestBackup(_ secondAlert: String) {
-    let harness = SpeechHarness()
-    let start = harness.clock.time
-    harness.speaker.scheduleAlert("Possible person, left.")
-    harness.clock.advance(by: 2)
-    harness.speaker.scheduleAlert(secondAlert)
-    #expect(harness.clock.pendingTimerCount == 1)
-    harness.clock.advance(to: start + 4)
-    harness.clock.fireEvenIfCancelled(0)
-    #expect(harness.synthesizer.spoken.isEmpty)
-    harness.clock.advance(to: start + 6 - 0.001)
-    #expect(harness.synthesizer.spoken.isEmpty)
-    harness.clock.advance(to: start + 6)
-    #expect(harness.synthesizer.spoken == [secondAlert])
-    harness.clock.fireEvenIfCancelled(1)
-    harness.clock.advance(by: 10)
-    #expect(harness.synthesizer.spoken == [secondAlert])
-    #expect(harness.synthesizer.stopCount == 0)
-  }
-
-  @Test func repeatedAndOlderDescriptionIDsDoNotCancelTheBackup() async throws {
-    let harness = SpeechHarness()
-    harness.speaker.speakDescription("One person ahead.", id: 7)
-    try await harness.synthesizer.complete(0)
-    harness.speaker.scheduleAlert("Possible person, left.")
-    harness.clock.advance(by: 3)
-    harness.speaker.speakDescription("One person ahead.", id: 7)
-    harness.speaker.speakDescription("An older scene.", id: 6)
-    harness.clock.advance(by: 1)
-    #expect(harness.synthesizer.spoken == ["One person ahead.", "Possible person, left."])
-  }
-
-  @Test func alertWaitsWithoutInterruptingCurrentSpeech() async throws {
-    let harness = SpeechHarness()
-    harness.speaker.speakDescription("One person ahead.", id: 1)
-    harness.speaker.scheduleAlert("Possible person, left.")
-    harness.clock.advance(by: 3)
-    #expect(harness.synthesizer.spoken == ["One person ahead."])
-    #expect(harness.synthesizer.stopCount == 0)
-    harness.speaker.speakDescription("Two people to your left.", id: 2)
-    try await harness.synthesizer.complete(0)
-    harness.clock.advance(by: 10)
-    #expect(harness.synthesizer.spoken == ["One person ahead.", "Two people to your left."])
-    #expect(harness.synthesizer.stopCount == 0)
-  }
-
   @Test func speaksEachIDOnceAndAllowsTheSameTextWithANewID() async throws {
     let harness = SpeechHarness()
     harness.speaker.speakDescription("Two people ahead.", id: 7)
@@ -97,48 +20,22 @@ struct FrameAlertSpeakerTests {
     #expect(harness.synthesizer.stopCount == 0)
   }
 
-  @Test func descriptionWaitsForABackupThatHasAlreadyStarted() async throws {
-    let harness = SpeechHarness()
-    harness.speaker.scheduleAlert("Possible person, left.")
-    harness.clock.advance(by: 4)
-    harness.speaker.speakDescription("Two people to your left.", id: 1)
-    #expect(harness.synthesizer.spoken == ["Possible person, left."])
-    #expect(harness.synthesizer.stopCount == 0)
-    try await harness.synthesizer.complete(0)
-    #expect(harness.synthesizer.spoken == ["Possible person, left.", "Two people to your left."])
-  }
-
-  @Test func keepsOnlyTheNewestWaitingDescription() async throws {
-    let harness = SpeechHarness()
-    harness.speaker.scheduleAlert("Possible person, left.")
-    harness.clock.advance(by: 4)
-    harness.speaker.speakDescription("One person to your left.", id: 1)
-    harness.speaker.speakDescription("Two people ahead.", id: 2)
-    harness.speaker.speakDescription("One person to your left.", id: 1)
-    try await harness.synthesizer.complete(0)
-    #expect(harness.synthesizer.spoken == ["Possible person, left.", "Two people ahead."])
-  }
-
-  @Test func expiredBackupsInterruptSpeechAndIgnoreOldCompletionCallbacks() async throws {
+  @Test func oldCompletionCallbacksDoNotStartWaitingDescriptionsEarly() async throws {
     let harness = SpeechHarness()
     harness.speaker.speakDescription("One person ahead.", id: 1)
-    harness.speaker.scheduleAlert("Possible person, left.")
-    harness.clock.advance(by: 4)
     harness.speaker.speakDescription("Two people to your left.", id: 2)
-    harness.speaker.scheduleAlert("Possible person, right.")
-    harness.clock.advance(by: 4)
-    #expect(harness.synthesizer.stopCount == 2)
+    try await harness.synthesizer.complete(0)
+    harness.speaker.speakDescription("Several people ahead.", id: 3)
     try await harness.synthesizer.complete(0, cancelled: true)
     try await harness.synthesizer.complete(0)
-    try await harness.synthesizer.complete(1, cancelled: true)
-    #expect(harness.synthesizer.spoken == [
-      "One person ahead.", "Possible person, left.", "Possible person, right.",
-    ])
-    // Repeated server replies must not restart the interrupted description.
+    #expect(harness.synthesizer.spoken == ["One person ahead.", "Two people to your left."])
+    // Repeated server replies must not restart an older description.
     harness.speaker.speakDescription("One person ahead.", id: 1)
-    try await harness.synthesizer.complete(2)
-    #expect(harness.synthesizer.spoken.last == "Two people to your left.")
-    #expect(harness.synthesizer.spoken.count == 4)
+    try await harness.synthesizer.complete(1)
+    #expect(harness.synthesizer.spoken == [
+      "One person ahead.", "Two people to your left.", "Several people ahead.",
+    ])
+    #expect(harness.synthesizer.stopCount == 0)
   }
 
   @Test func descriptionsWaitForOtherDescriptionsWithoutInterrupting() async throws {
@@ -146,6 +43,7 @@ struct FrameAlertSpeakerTests {
     harness.speaker.speakDescription("One person ahead.", id: 1)
     harness.speaker.speakDescription("Two people ahead.", id: 2)
     harness.speaker.speakDescription("Several people ahead.", id: 3)
+    harness.speaker.speakDescription("Two people ahead.", id: 2)
     #expect(harness.synthesizer.spoken == ["One person ahead."])
     try await harness.synthesizer.complete(0)
     #expect(harness.synthesizer.spoken == ["One person ahead.", "Several people ahead."])
@@ -155,8 +53,7 @@ struct FrameAlertSpeakerTests {
   @Test(arguments: [4.999, 5.0, 5.001])
   func dropsDescriptionsWaitingMoreThanFiveSeconds(_ wait: TimeInterval) async throws {
     let harness = SpeechHarness()
-    harness.speaker.scheduleAlert("Possible person, left.")
-    harness.clock.advance(by: 4)
+    harness.speaker.speakDescription("The current scene.", id: 0)
     let receivedAt = harness.clock.time
     harness.speaker.speakDescription("One person to your left.", id: 1)
     harness.clock.time += 4
@@ -170,78 +67,52 @@ struct FrameAlertSpeakerTests {
 
   @Test func aNewerDescriptionGetsItsOwnWaitingDeadline() async throws {
     let harness = SpeechHarness()
-    harness.speaker.scheduleAlert("Possible person, left.")
-    harness.clock.advance(by: 4)
+    harness.speaker.speakDescription("The current scene.", id: 0)
     harness.speaker.speakDescription("One person to your left.", id: 1)
     harness.clock.time += 6
     harness.speaker.speakDescription("Two people ahead.", id: 2)
     harness.clock.time += 2
     try await harness.synthesizer.complete(0)
-    #expect(harness.synthesizer.spoken == ["Possible person, left.", "Two people ahead."])
+    #expect(harness.synthesizer.spoken == ["The current scene.", "Two people ahead."])
   }
 
   @Test func blankTextDoesNotInterruptSpeechOrConsumeAnID() {
     let harness = SpeechHarness()
-    harness.speaker.scheduleAlert(" \n\t ")
     harness.speaker.speakDescription(" \n\t ", id: 1)
     #expect(harness.synthesizer.spoken.isEmpty)
     harness.speaker.speakDescription(" One person ahead. \n", id: 1)
-    harness.speaker.scheduleAlert("\n")
-    #expect(harness.clock.pendingTimerCount == 0)
+    harness.speaker.speakDescription("\n", id: 2)
     #expect(harness.synthesizer.spoken == ["One person ahead."])
     #expect(harness.synthesizer.stopCount == 0)
   }
 
   @Test func stopClearsPendingSpeechAndResetsRememberedIDs() async throws {
     let harness = SpeechHarness()
-    harness.speaker.scheduleAlert("Possible person, left.")
-    harness.clock.advance(by: 4)
+    harness.speaker.speakDescription("The current scene.", id: 6)
     harness.speaker.speakDescription("An old scene.", id: 7)
     harness.speaker.stop()
     try await harness.synthesizer.complete(0, cancelled: true)
     try await harness.synthesizer.complete(0)
-    #expect(harness.synthesizer.spoken == ["Possible person, left."])
+    #expect(harness.synthesizer.spoken == ["The current scene."])
     harness.speaker.speakDescription("A new stream.", id: 1)
     #expect(harness.synthesizer.spoken.last == "A new stream.")
     harness.speaker.stop()
     harness.speaker.speakDescription("A new stream.", id: 1)
+    harness.speaker.speakDescription("The next scene.", id: 2)
     try await harness.synthesizer.complete(1, cancelled: true)
-    #expect(harness.synthesizer.spoken == ["Possible person, left.", "A new stream.", "A new stream."])
+    try await harness.synthesizer.complete(1)
+    #expect(harness.synthesizer.spoken == ["The current scene.", "A new stream.", "A new stream."])
+    try await harness.synthesizer.complete(2)
+    #expect(harness.synthesizer.spoken.last == "The next scene.")
     #expect(harness.synthesizer.stopCount == 2)
-  }
-
-  @Test func stopCancelsTheBackupAndIgnoresItsCallbackAfterRestart() {
-    let harness = SpeechHarness()
-    harness.speaker.scheduleAlert("An old alert.")
-    harness.clock.advance(by: 2)
-    harness.speaker.stop()
-    #expect(harness.clock.pendingTimerCount == 0)
-    harness.speaker.scheduleAlert("A new alert.")
-    harness.clock.fireEvenIfCancelled(0)
-    harness.clock.advance(by: 2)
-    #expect(harness.synthesizer.spoken.isEmpty)
-    harness.clock.advance(by: 2)
-    #expect(harness.synthesizer.spoken == ["A new alert."])
-  }
-
-  @Test func blankDescriptionDoesNotCancelTheBackupOrConsumeAnID() async throws {
-    let harness = SpeechHarness()
-    harness.speaker.scheduleAlert("Possible person, left.")
-    harness.speaker.speakDescription(" \n\t ", id: 1)
-    harness.clock.advance(by: 4)
-    #expect(harness.synthesizer.spoken == ["Possible person, left."])
-    try await harness.synthesizer.complete(0)
-    harness.speaker.speakDescription("Two people ahead.", id: 1)
-    #expect(harness.synthesizer.spoken == ["Possible person, left.", "Two people ahead."])
   }
 
   @Test func anUnexpectedCancellationStillDrainsTheWaitingDescription() async throws {
     let harness = SpeechHarness()
-    harness.speaker.scheduleAlert("Possible person, left.")
-    harness.clock.advance(by: 4)
+    harness.speaker.speakDescription("The current scene.", id: 0)
     harness.speaker.speakDescription("One person to your left.", id: 1)
     try await harness.synthesizer.complete(0, cancelled: true)
-    #expect(harness.synthesizer.spoken == ["Possible person, left.", "One person to your left."])
+    #expect(harness.synthesizer.spoken == ["The current scene.", "One person to your left."])
   }
 }
 
@@ -255,49 +126,14 @@ private final class SpeechHarness {
     let clock = clock
     speaker = FrameAlertSpeaker(
       synthesizer: synthesizer,
-      now: { clock.time },
-      scheduleFallback: { delay, fire in clock.schedule(after: delay, fire: fire) }
+      now: { clock.time }
     )
   }
 }
 
 @MainActor
 private final class SpeechClock {
-  private final class ScheduledAlert {
-    let deadline: TimeInterval
-    let fire: @MainActor () -> Void
-    var isCancelled = false
-    var hasFired = false
-
-    init(deadline: TimeInterval, fire: @escaping @MainActor () -> Void) {
-      self.deadline = deadline
-      self.fire = fire
-    }
-  }
-
   var time: TimeInterval = 100
-  private var timers: [ScheduledAlert] = []
-  var pendingTimerCount: Int { timers.filter { !$0.isCancelled && !$0.hasFired }.count }
-
-  func schedule(after delay: TimeInterval, fire: @escaping @MainActor () -> Void) -> (@MainActor () -> Void) {
-    let timer = ScheduledAlert(deadline: time + delay, fire: fire)
-    timers.append(timer)
-    return { timer.isCancelled = true }
-  }
-
-  func advance(by interval: TimeInterval) { advance(to: time + interval) }
-
-  func advance(to target: TimeInterval) {
-    while let timer = timers.filter({ !$0.isCancelled && !$0.hasFired && $0.deadline <= target })
-      .min(by: { $0.deadline < $1.deadline }) {
-      time = timer.deadline
-      timer.hasFired = true
-      timer.fire()
-    }
-    time = target
-  }
-
-  func fireEvenIfCancelled(_ index: Int) { timers[index].fire() }
 }
 
 @MainActor
