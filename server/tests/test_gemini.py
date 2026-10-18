@@ -201,7 +201,7 @@ def test_main_and_fallback_describers_get_their_models_and_thinking(
     assert build_describer(s) is not None and build_fallback_describer(s) is not None
     assert [(a[1], kw["thinking_level"]) for a, kw in seen] == [
         ("gemini-3.6-flash", "low"),
-        ("gemini-3.1-flash-lite", None),
+        ("gemini-3.5-flash-lite", None),
     ]
 
 
@@ -214,7 +214,7 @@ def test_the_info_line_names_the_fallback(tmp_path: Path, caplog: pytest.LogCapt
     d = build_describer(_settings(tmp_path))
     assert d is not None
     asyncio.run(d.aclose())  # type: ignore[attr-defined]
-    assert "gemini-3.1-flash-lite" in caplog.text
+    assert "gemini-3.5-flash-lite" in caplog.text
 
 
 def test_the_gemini_timeout_may_equal_but_not_exceed_the_max_age() -> None:
@@ -222,3 +222,11 @@ def test_the_gemini_timeout_may_equal_but_not_exceed_the_max_age() -> None:
     with pytest.raises(ValidationError):
         Settings(gemini_timeout_s=5.5, describe_max_age_s=5)
     assert Settings().gemini_timeout_s == 3
+
+
+def test_env_example_names_the_same_models_as_the_settings_defaults() -> None:
+    example = (Path(__file__).resolve().parents[1] / ".env.example").read_text()
+    values = dict(line.split("=", 1) for line in example.splitlines() if line.startswith("GEMINI_"))
+    defaults = Settings.model_fields
+    assert values["GEMINI_MODEL"] == defaults["gemini_model"].default
+    assert values["GEMINI_FALLBACK_MODEL"] == defaults["gemini_fallback_model"].default

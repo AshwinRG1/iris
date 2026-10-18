@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     gemini_api_key: SecretStr = SecretStr("")  # SecretStr keeps it out of repr and logs
     gemini_model: str = "gemini-3.6-flash"
     # Tried once when the main model times out or answers 503; empty means no fallback.
-    gemini_fallback_model: str = "gemini-3.1-flash-lite"
+    gemini_fallback_model: str = "gemini-3.5-flash-lite"
     gemini_timeout_s: float = Field(default=3.0, gt=0, allow_inf_nan=False)
     describe_cooldown_s: float = Field(default=15.0, ge=0, allow_inf_nan=False)
     # A description older than the /frame window could never be spoken, so cap it there.

@@ -132,7 +132,8 @@ def _read_prompt(s: Settings) -> str | None:
 def build_fallback_describer(s: Settings) -> Describer | None:
     """The second model, tried once after a timeout or 503. Call only when the main one built.
 
-    It sets no thinking level: Google lists none for the lite model, so it keeps its default.
+    It sends no thinking setting, so the lite model keeps its own default (minimal); on the box
+    that answered in about 0.6 s.
     """
     model = s.gemini_fallback_model.strip()
     prompt = _read_prompt(s) if model else None
