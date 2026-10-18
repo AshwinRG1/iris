@@ -46,9 +46,18 @@ def test_two_hits_three_frames_apart_do_not_alert() -> None:  # scenario 3
     assert run([(0, HIT), (400, MISS), (800, MISS), (1200, HIT)]) == {}
 
 
-def test_detections_below_conf_alert_return_but_never_alert() -> None:  # scenario 4
-    weak = [det(conf=0.18, cx=0.1)]  # kept (>= CONF_DETECT 0.15), below CONF_ALERT 0.20
-    assert run([(t, weak) for t in range(0, 2000, 400)]) == {}
+def test_detections_below_conf_alert_return_but_never_alert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # scenario 4
+    # The defaults are equal (0.10), so raise CONF_ALERT to open a gap above CONF_DETECT.
+    monkeypatch.setenv("CONF_ALERT", "0.30")
+    weak = [det(conf=0.18, cx=0.1)]  # kept (>= CONF_DETECT 0.10), below CONF_ALERT 0.30
+    assert run([(t, weak) for t in range(0, 2000, 400)], Settings()) == {}
+
+
+def test_with_the_default_thresholds_every_kept_detection_is_a_hit() -> None:
+    faint = [det(conf=0.10, cx=0.1)]
+    assert run([(0, faint), (400, faint)]) == {400: "possible person, left"}
 
 
 def test_empty_clip_has_no_alerts() -> None:  # scenario 10
@@ -84,7 +93,7 @@ def test_hits_from_before_a_pause_are_forgotten() -> None:  # scenario 7
         {"NEEDED": "0"},
         {"CONF_ALERT": "0"},
         {"CONF_ALERT": "1.5"},
-        {"CONF_ALERT": "0.1"},  # below the default CONF_DETECT of 0.15
+        {"CONF_ALERT": "0.05"},  # below the default CONF_DETECT of 0.10
         {"COOLDOWN_S": "inf"},
         {"COOLDOWN_S": "nan"},
         {"COOLDOWN_S": "-1"},
@@ -141,10 +150,10 @@ def test_a_hit_on_another_side_counts_toward_the_window() -> None:  # scenario 1
 
 def test_detection_thresholds_default_to_the_recall_tuning() -> None:
     fields = Settings.model_fields
-    assert fields["conf_detect"].default == 0.15
-    assert fields["conf_alert"].default == 0.20
-    assert Settings().tuning.conf_alert == 0.20
-    assert Tuning().conf_alert == 0.20
+    assert fields["conf_detect"].default == 0.10
+    assert fields["conf_alert"].default == 0.10
+    assert Settings().tuning.conf_alert == 0.10
+    assert Tuning().conf_alert == 0.10
 
 
 def test_env_example_lists_the_same_detection_thresholds() -> None:
