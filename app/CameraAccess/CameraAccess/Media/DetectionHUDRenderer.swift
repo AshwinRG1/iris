@@ -7,15 +7,29 @@ enum DetectionHUDRenderer {
   static let size = CGSize(width: 600, height: 600)
   private static let accent = UIColor(red: 0.3, green: 0.95, blue: 1, alpha: 1)
 
-  static func render(_ snapshot: DetectionHUDSnapshot) -> UIImage {
+  static func render(_ snapshot: DetectionHUDSnapshot, size canvasSize: CGSize = size) -> UIImage {
+    guard canvasSize.width.isFinite, canvasSize.height.isFinite, canvasSize.width > 0, canvasSize.height > 0 else {
+      return UIImage()
+    }
     let format = UIGraphicsImageRendererFormat()
     format.scale = 1
     format.opaque = false
-    return UIGraphicsImageRenderer(size: size, format: format).image { context in
+    return UIGraphicsImageRenderer(size: canvasSize, format: format).image { context in
+      // Older servers can still send detections without geometry. Keep their
+      // directional cards, but don't duplicate detections that have boxes.
+      let groups = snapshot.groups.compactMap { group -> DetectionHUDSnapshot.Group? in
+        let detections = group.detections.filter { $0.box == nil }
+        guard !detections.isEmpty else { return nil }
+        return .init(side: group.side, detections: detections, isDimmed: group.isDimmed)
+      }
+      let scale = min(canvasSize.width / size.width, canvasSize.height / size.height)
+      context.cgContext.saveGState()
+      context.cgContext.translateBy(x: (canvasSize.width - size.width * scale) / 2, y: 0)
+      context.cgContext.scaleBy(x: scale, y: scale)
       var bottom: CGFloat = 16
 
       for (index, side) in DetectionHUDSnapshot.directions.enumerated() {
-        guard let group = snapshot.groups.first(where: { $0.side == side }) else { continue }
+        guard let group = groups.first(where: { $0.side == side }) else { continue }
         let count = min(group.detections.count, 3)
         let overflow = group.detections.count - count
         let height = CGFloat(52 + count * 36 + (overflow > 0 ? 28 : 0))
@@ -43,7 +57,7 @@ enum DetectionHUDRenderer {
       }
 
       // Unknown directions remain explicitly named, never placed in a known column.
-      let otherGroups = snapshot.groups.filter { !DetectionHUDSnapshot.directions.contains($0.side) }
+      let otherGroups = groups.filter { !DetectionHUDSnapshot.directions.contains($0.side) }
       let otherDetections = otherGroups.flatMap { group in group.detections.map { (group, $0) } }
       for (row, entry) in otherDetections.prefix(2).enumerated() {
         let (group, detection) = entry
@@ -56,6 +70,39 @@ enum DetectionHUDRenderer {
              in: bounds.insetBy(dx: 12, dy: 6), size: 23, alignment: .center)
         context.cgContext.restoreGState()
       }
+      context.cgContext.restoreGState()
+      drawBoxes(snapshot, in: context.cgContext, canvasSize: canvasSize, scale: scale)
+    }
+  }
+
+  private static func drawBoxes(_ snapshot: DetectionHUDSnapshot, in context: CGContext, canvasSize: CGSize, scale: CGFloat) {
+    let fontSize = 22 * scale
+    let font = UIFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .semibold)
+    let padding = CGSize(width: 6 * scale, height: 4 * scale)
+    for group in snapshot.groups {
+      context.saveGState()
+      context.setAlpha(group.isDimmed ? 0.5 : 1)
+      context.setStrokeColor(UIColor.systemYellow.cgColor)
+      context.setLineWidth(3 * scale)
+      for detection in group.detections {
+        guard let box = detection.box,
+          let rect = DetectionBoxLayout.rect(for: box, frameSize: snapshot.frameSize, canvasSize: canvasSize)
+        else { continue }
+        context.stroke(rect)
+
+        let label = "\(detection.label): \(detection.conf.formatted(.percent.precision(.fractionLength(0))))"
+          .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let labelSize = CGSize(
+          width: (label as NSString).size(withAttributes: [.font: font]).width.rounded(.up) + padding.width * 2,
+          height: font.lineHeight.rounded(.up) + padding.height * 2
+        )
+        let labelRect = DetectionBoxLayout.labelRect(for: rect, labelSize: labelSize, canvasSize: canvasSize, gap: 4 * scale)
+        UIColor.black.withAlphaComponent(0.8).setFill()
+        UIBezierPath(roundedRect: labelRect, cornerRadius: 4 * scale).fill()
+        text(label, in: labelRect.insetBy(dx: padding.width, dy: padding.height), size: fontSize,
+             color: .systemYellow, weight: .semibold)
+      }
+      context.restoreGState()
     }
   }
 

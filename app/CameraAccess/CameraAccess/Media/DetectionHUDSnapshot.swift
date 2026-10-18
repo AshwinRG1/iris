@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Reply timestamps are excluded from equality, so fresh but identical content
@@ -25,8 +26,11 @@ struct DetectionHUDSnapshot: Equatable, Sendable {
   let status: Status
   let groups: [Group]
   let footer: String
+  let frameSize: CGSize
 
-  init(held: DetectionHold, isEnabled: Bool, isStreaming: Bool, hasError: Bool, isPaused: Bool = false, at date: Date) {
+  init(held: DetectionHold, isEnabled: Bool, isStreaming: Bool, hasError: Bool, isPaused: Bool = false,
+       frameSize: CGSize = CGSize(width: 640, height: 480), at date: Date) {
+    self.frameSize = frameSize
     var visible = held
     visible.expire(at: date)
     if !isEnabled || !isStreaming { visible = DetectionHold() }

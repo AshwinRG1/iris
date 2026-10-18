@@ -87,6 +87,8 @@ final class FrameUploader {
   private(set) var isUploading = false
   private(set) var detections: [FrameDetection] = []
   private(set) var held = DetectionHold()
+  /// The successful request's source aspect ratio, also used by the live preview.
+  private(set) var lastFrameSize: CGSize?
   private(set) var sceneDescription: String?
   private(set) var lastResponseAt: Date?
   private(set) var lastAlert: String?
@@ -246,6 +248,7 @@ final class FrameUploader {
         let receivedAt = Date()
         detections = reply.detections
         held.apply(reply.detections, at: receivedAt)
+        lastFrameSize = image.size
         sceneDescription = reply.description
         lastResponseAt = receivedAt
         lastRoundTripMS = roundTripMS
@@ -336,6 +339,7 @@ final class FrameUploader {
     lastAttempt = nil
     detections = []
     held = DetectionHold()
+    lastFrameSize = nil
     sceneDescription = nil
     lastResponseAt = nil
     lastRoundTripMS = nil
