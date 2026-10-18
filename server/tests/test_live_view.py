@@ -100,7 +100,7 @@ def test_latest_carries_what_the_page_needs_to_color_hits_and_show_age() -> None
         _post(c)
         clock.t = 3500
         body = c.get("/latest").json()
-    assert body["tuning"]["conf_alert"] == 0.35
+    assert body["tuning"]["conf_alert"] == 0.20
     assert body["age_ms"] == 2500
 
 

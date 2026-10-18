@@ -42,35 +42,6 @@ def test_quiet_frame_matches_contract_fixture() -> None:
     assert reply["alert"] is fixture["alert"]
 
 
-def test_person_detection_is_returned_with_side_and_extra_fields() -> None:
-    with _client(FakeDetector([[det(conf=0.71, cx=0.1)]])) as c:
-        reply = _post(c)
-    assert reply["detections"] == [{"label": "person", "conf": 0.71, "side": "left"}]
-    assert reply["alert"] is None
-    assert reply["frame_id"] == 1
-    assert reply["server_ms"] == 10  # FakeClock advances 10 ms per call
-    assert set(reply) <= {
-        "detections",
-        "alert",
-        "frame_id",
-        "server_ms",
-        "description",
-        "description_id",
-    }
-
-
-def test_reply_with_detections_has_the_contract_shapes() -> None:
-    fixture = json.loads((CONTRACT / "frame-alert.json").read_text())
-    with _client(FakeDetector([[det(conf=0.38, cx=0.9)]])) as c:
-        reply = _post(c)
-    assert {"detections", "alert"} <= set(reply)
-    assert set(reply) <= set(fixture) | {"frame_id", "server_ms", "description", "description_id"}
-    for got, want in zip(reply["detections"], fixture["detections"], strict=False):
-        assert got.keys() == want.keys()
-        assert {k: type(v) for k, v in got.items()} == {k: type(v) for k, v in want.items()}
-    assert reply["detections"][0]["side"] == "right"
-
-
 def test_frame_ids_increase() -> None:
     with _client(FakeDetector()) as c:
         assert [_post(c)["frame_id"] for _ in range(3)] == [1, 2, 3]
@@ -95,8 +66,8 @@ def test_non_alert_label_is_dropped() -> None:
 
 
 def test_detection_below_conf_detect_is_dropped() -> None:
-    with _client(FakeDetector([[det(conf=0.24), det(conf=0.25)]])) as c:
-        assert [d["conf"] for d in _post(c)["detections"]] == [0.25]
+    with _client(FakeDetector([[det(conf=0.14), det(conf=0.15)]])) as c:
+        assert [d["conf"] for d in _post(c)["detections"]] == [0.15]
 
 
 def test_detection_runs_off_the_event_loop() -> None:

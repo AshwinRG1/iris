@@ -76,15 +76,11 @@ struct CameraView: View {
         topBar
           .padding(.horizontal, 20)
           .padding(.top, 16)
-          .padding(.bottom, 40)
+          .padding(.bottom, 16)
           .background(
             LinearGradient(colors: [.black.opacity(0.6), .clear], startPoint: .top, endPoint: .bottom)
               .edgesIgnoringSafeArea(.top)
           )
-
-        if viewModel.showsLivePreview {
-          DetectionOverlayView(uploader: viewModel.frameUploader)
-        }
 
         Spacer(minLength: 0)
 
@@ -110,8 +106,14 @@ struct CameraView: View {
     }
     .navigationBarHidden(true)
     .sheet(isPresented: $showUploadStatus) {
-      FrameUploadStatusView(uploader: viewModel.frameUploader)
+      FrameUploadStatusView(
+        uploader: viewModel.frameUploader,
+        display: viewModel.glassesDisplay,
+        canRetryDisplay: viewModel.isSessionActive,
+        retryDisplay: viewModel.retryGlassesDisplay
+      )
     }
+    .onDisappear { viewModel.endSession() }
   }
 
   // MARK: - Preview background
@@ -125,6 +127,9 @@ struct CameraView: View {
         // while the stream tears down — so the paused badge / stop loader overlays
         // the preview rather than the start-streaming screen.
         LivePreviewView(viewModel: viewModel)
+          .overlay {
+            DetectionOverlayView(display: viewModel.glassesDisplay)
+          }
         if viewModel.isPaused {
           // Dim the frozen frame so the badge reads as intentionally paused.
           Color.black.opacity(0.35)

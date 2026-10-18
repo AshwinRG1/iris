@@ -27,15 +27,15 @@ from ultralytics import YOLO
 EPOCHS = 50
 IMGSZ = 640
 PATIENCE = 10
-BASE_MODEL = "yolo26s.pt"
+BASE_MODEL = "yolo11s.pt"
 WEIGHTS_DIR = Path("server/weights")
 
 
-def train_run(data: str, run_name: str) -> Path:
+def train_run(data: str, run_name: str, epochs: int = EPOCHS) -> Path:
     model = YOLO(BASE_MODEL)
     model.train(
         data=data,
-        epochs=EPOCHS,
+        epochs=epochs,
         imgsz=IMGSZ,
         patience=PATIENCE,
         name=run_name,
@@ -53,13 +53,14 @@ def main():
     parser.add_argument("--run", choices=["plain", "storm", "both"], default="both")
     parser.add_argument("--plain-data", default="data/merged/data.yaml")
     parser.add_argument("--storm-data", default="data/merged_storm/data.yaml")
+    parser.add_argument("--epochs", type=int, default=EPOCHS)
     args = parser.parse_args()
 
     if args.run in ("plain", "both"):
-        train_run(args.plain_data, "plain")
+        train_run(args.plain_data, "plain", args.epochs)
 
     if args.run in ("storm", "both"):
-        train_run(args.storm_data, "storm")
+        train_run(args.storm_data, "storm", args.epochs)
 
 
 if __name__ == "__main__":

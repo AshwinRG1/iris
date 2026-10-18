@@ -4,9 +4,10 @@ A sample iOS application demonstrating integration with Meta Wearables Device Ac
 
 ## Features
 
-- Connect to Meta AI glasses
+- Connect to Meta Ray-Ban Display glasses
 - Explicit camera lifecycle: start/end a device session and start/stop the live preview
 - Stream the camera feed from the device
+- Show labeled detection boxes on the glasses and over the phone's live camera preview
 - Capture photos
 - Record video, with optional sound-in-video captured from the glasses' microphone
 - Backgrounding the app ends the active preview session and returns the sample to a clean idle state
@@ -19,7 +20,7 @@ A sample iOS application demonstrating integration with Meta Wearables Device Ac
 - Xcode 26.4+
 - Swift 6.3+
 - Meta Wearables Device Access Toolkit (included as a dependency)
-- A Meta AI glasses device for testing (optional for development)
+- Meta Ray-Ban Display glasses for hardware testing (optional for development)
 
 ## Building the app
 
@@ -81,15 +82,15 @@ derived from `plant.mp4` with libx265, `bframes=0`, a closed 24-frame GOP and a
 1600 kb/s VBV limit. Use this sample when checking smooth mock playback without
 waiting for a conversion.
 
-The phone currently shows directional detection indicators from `POST /frame`.
-That response contains no box coordinates. Set the server URL and enable
+The phone shows bounding boxes from `POST /frame`, labeled with the detected
+class and confidence (for example, `person: 87%`). Set the server URL and enable
 **Send frames and speak alerts** to receive detections; camera playback alone
 doesn't run an on-device detector.
 
 The live preview fits each frame to the available screen while preserving its
-aspect ratio, with black margins when needed. Directional indicators appear at
-the top of the screen below the camera controls. The preview and detection uploads
-use the same complete frame, including for landscape, square and tall videos.
+aspect ratio, with black margins when needed. Boxes follow the same fitted frame,
+including for landscape, square and tall videos. Labels appear above each box,
+or below it when there isn't enough room above, and stay within the display.
 
 ### Iris uploads and detection HUD
 
@@ -114,30 +115,68 @@ The app sends a fresh 640-pixel-wide JPEG at most every 400 ms, with one request
 a time and a 1.5-second timeout. Resizing and JPEG encoding at 0.7 quality run in a
 detached background task after the preview image is published. Errors appear in
 Iris status and uploads retry on subsequent frames. Pausing or stopping the
-preview cancels pending uploads and speech. The HUD shows server detections under
-Left, Ahead and Right; the API does
-not supply bounding boxes. Each side's indicator stays visible through brief
-misses, dims to 50% while missing, and fades out after three misses or 1.2 seconds
-since its last detection. Failed requests do not count as misses; the overlay
+preview cancels pending uploads and speech. The HUD draws the server's normalized
+bounding boxes; older replies without optional `box` and `center` fields still
+decode and show Left, Ahead and Right cards. Each side's detections stay visible
+through brief misses, dim to 50% while missing, and disappear after three misses
+or 1.2 seconds since the side's last detection. Failed requests do not count as misses; the overlay
 also clears after two seconds without a successful frame reply. Stopping the
 preview or changing upload settings clears it immediately.
-Alerts and Gemini scene descriptions appear in status as replies arrive. Each
-server `alert` starts a four-second backup timer, replacing any pending timer.
-A new optional `description_id` cancels that backup and speaks the description
-once using the existing Apple text-to-speech voice. If no new description arrives
-in time, the alert is spoken instead, interrupting current speech. Descriptions
-wait for current speech; only the newest waiting description is kept, and it is
-dropped if it has waited more than five seconds. Stopping the preview, disabling
-uploads, or changing the server URL or key clears the backup timer, pending speech
-and remembered description IDs.
+Alerts and Gemini scene descriptions appear in status as replies arrive. Only
+Gemini descriptions are spoken, once per new optional `description_id`, using
+the existing Apple text-to-speech voice. Server alerts remain display-only.
+Descriptions wait for current speech; only the newest waiting description is
+kept, and it is dropped if it has waited more than five seconds. Stopping the
+preview, disabling uploads, or changing the server URL or key clears pending
+speech and remembered description IDs.
 Replies without `description_id` remain compatible and display descriptions only.
+
+### Meta Ray-Ban Display HUD and phone preview
+
+Start a session with Meta Ray-Ban Display glasses to connect their display
+automatically. The display shares the camera's device session. Open **Iris
+status**, configure the server and enable **Send frames and speak alerts**, then
+start **Preview** to receive detections. The phone has one live camera view with
+the detection HUD over the fitted video. Photos, recording and uploads use the
+camera frames beneath that HUD.
+
+The shared renderer draws yellow bounding boxes with class and confidence labels
+above them, falling back below when the label would clip at the top. Labels are
+clamped within the screen even when a box reaches both edges. It fits the source
+frame into the phone's preview bounds or the glasses' 600×600 canvas, then sends
+the glasses image through `MWDATDisplay`. Detections without geometry use compact
+directional cards. With no detections the display stays unlit. The phone composites
+transparent artwork over its camera feed; the glasses receive artwork on a black
+canvas. The wearer sees the HUD over their surroundings directly; the camera video
+is not sent back into the display.
+
+**Iris status** shows the display connection, HUD delivery and detection state.
+Failed transfers retry with the newest image, and **Retry display** reconnects a
+failed display without ending the camera session. Display updates never overlap or queue old
+frames. Detection expiry runs independently of the visible phone view, including
+while Iris status is open. Pausing/stopping the camera or disabling uploads
+removes detections; ending the session or backgrounding the app stops the display.
+
+For development on an iPhone without Display glasses, enable MockDeviceKit in the
+ladybug menu and choose **Pair Meta Ray-Ban Display**. Turn on Power, Donned and
+Unfolded, load a camera feed, and start the session and preview. Pair a single
+powered device to make the camera's automatic device selection unambiguous.
+Device selection, mock pairing and test setup target Meta Ray-Ban Display only.
+
+Physical-device verification is still required for the display's optical size,
+firmware image layout, camera/display operation together and reconnection. The
+phone renders the same detections in its preview bounds; it does not read the
+hardware framebuffer or reproduce Meta's system UI.
 
 `FrameUploaderTests` covers the shared JSON fixtures, multipart/JPEG formatting,
 background JPEG drawing, throttling, cancellation and recovery using an in-memory
 URL loading transport, plus held indicators across misses, errors and resets.
 `DetectionHoldTests` checks per-side history, dimming, expiry and future directions.
-`FrameAlertSpeakerTests` checks the four-second alert backup, cancellation by new
-descriptions, timer replacement, description deduplication, pending replacement,
+`DetectionHUDSnapshotTests` checks the shared HUD content and freshness, and
+`HUDDeliveryBufferTests` checks transfer coalescing, retries and session invalidation.
+`DetectionBoxLayoutTests` checks optional geometry decoding, aspect-fit mapping,
+label placement above or below a box, and clipping at the display edges.
+`FrameAlertSpeakerTests` checks description deduplication, pending replacement,
 expiry, delayed callbacks and resets without playing audio.
 `MockVideoPreparerTests` checks HEVC passthrough, temporary
 file ownership, 1080p conversion in both orientations, H.264 imports, B-frame

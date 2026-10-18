@@ -87,6 +87,8 @@ final class FrameUploader {
   private(set) var isUploading = false
   private(set) var detections: [FrameDetection] = []
   private(set) var held = DetectionHold()
+  /// The successful request's source aspect ratio, also used by the live preview.
+  private(set) var lastFrameSize: CGSize?
   private(set) var sceneDescription: String?
   private(set) var lastResponseAt: Date?
   private(set) var lastAlert: String?
@@ -119,6 +121,9 @@ final class FrameUploader {
   @ObservationIgnored private var generation = 0
   @ObservationIgnored private var healthTask: Task<Void, Never>?
   @ObservationIgnored private var healthGeneration = 0
+  /// Delivers complete state changes to the glasses even when the camera or
+  /// settings screen is covering the phone HUD. Health checks never trigger it.
+  @ObservationIgnored var onHUDUpdate: (@MainActor () -> Void)?
 
   private static let interval: TimeInterval = 0.4
   private static let timeout: TimeInterval = 1.5
@@ -243,6 +248,7 @@ final class FrameUploader {
         let receivedAt = Date()
         detections = reply.detections
         held.apply(reply.detections, at: receivedAt)
+        lastFrameSize = image.size
         sceneDescription = reply.description
         lastResponseAt = receivedAt
         lastRoundTripMS = roundTripMS
@@ -253,12 +259,12 @@ final class FrameUploader {
         if let alert = reply.alert, !alert.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
           lastAlert = alert
           lastAlertAt = lastResponseAt
-          speaker.scheduleAlert(alert)
         }
-        // Schedule first so a new description in this reply cancels the backup too.
+        // Only Gemini descriptions use speech; server alerts remain on screen.
         if let description = reply.description, let id = reply.descriptionID {
           speaker.speakDescription(description, id: id)
         }
+        onHUDUpdate?()
       } catch {
         guard !Task.isCancelled, let self, generation == requestGeneration else { return }
         if error is DecodingError {
@@ -333,6 +339,7 @@ final class FrameUploader {
     lastAttempt = nil
     detections = []
     held = DetectionHold()
+    lastFrameSize = nil
     sceneDescription = nil
     lastResponseAt = nil
     lastRoundTripMS = nil
@@ -340,6 +347,7 @@ final class FrameUploader {
     lastFrameID = nil
     lastError = nil
     speaker.stop()
+    onHUDUpdate?()
   }
 
   private func recordFailure(_ message: String) {
@@ -353,6 +361,7 @@ final class FrameUploader {
     let changed = lastError != message
     lastError = message
     if changed { Self.logger.error("\(message, privacy: .public)") }
+    onHUDUpdate?()
   }
 
   private func invalidateServerHealth() {

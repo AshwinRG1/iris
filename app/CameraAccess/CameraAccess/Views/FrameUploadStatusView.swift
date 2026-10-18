@@ -2,11 +2,27 @@ import SwiftUI
 
 struct FrameUploadStatusView: View {
   @Bindable var uploader: FrameUploader
+  let display: GlassesDisplayController
+  let canRetryDisplay: Bool
+  let retryDisplay: () -> Void
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
     NavigationStack {
       Form {
+        Section("Meta Ray-Ban Display") {
+          LabeledContent("Display", value: display.statusText)
+            .accessibilityIdentifier("glasses_display_status")
+          LabeledContent("Detections", value: display.snapshot.heading.capitalized)
+          if let error = display.errorMessage {
+            Text(error)
+              .foregroundStyle(.red)
+            Button("Retry display", action: retryDisplay)
+              .disabled(!canRetryDisplay)
+              .accessibilityIdentifier("retry_glasses_display")
+          }
+        }
+
         Section("Iris server") {
           TextField("Server base URL", text: $uploader.serverURL)
             .keyboardType(.URL)

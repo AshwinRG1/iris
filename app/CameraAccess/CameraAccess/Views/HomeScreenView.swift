@@ -35,12 +35,12 @@ struct HomeScreenView: View {
           TipRow(
             resource: .smartGlassesIcon,
             title: "Start a session",
-            text: "Connect to your glasses to get started."
+            text: "Connect your Meta Ray-Ban Display glasses to get started."
           )
           TipRow(
             resource: .videoIcon,
             title: "Start preview",
-            text: "See the live camera feed from your glasses."
+            text: "See the camera feed with the same detection HUD shown on your glasses."
           )
           TipRow(
             resource: .tapIcon,

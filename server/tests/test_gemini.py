@@ -98,7 +98,10 @@ def test_build_describer_logs_one_info_line_when_on(
     lines = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
     assert len(lines) == 1 and "gemini-3.5-flash-lite" in lines[0]
     assert "fallback none" in lines[0] and "thinking default" in lines[0]
-    assert all(w in lines[0] for w in ("empty reset 3", "move 0.25", "area 0.5", "scene reset 60"))
+    assert all(
+        w in lines[0]
+        for w in ("cooldown 8", "empty reset 2", "move 0.25", "area 0.5", "scene reset 30")
+    )
     assert SECRET not in caplog.text
 
 
@@ -252,3 +255,20 @@ def test_env_example_names_the_same_models_as_the_settings_defaults() -> None:
     defaults = Settings.model_fields
     assert values["GEMINI_MODEL"] == defaults["gemini_model"].default
     assert values["GEMINI_FALLBACK_MODEL"] == defaults["gemini_fallback_model"].default
+
+
+def test_describe_defaults_match_the_box_tuning() -> None:
+    fields = Settings.model_fields
+    assert fields["describe_cooldown_s"].default == 8
+    assert fields["describe_scene_reset_s"].default == 30
+    assert fields["describe_empty_reset_s"].default == 2
+
+
+def test_env_example_lists_the_same_describe_defaults() -> None:
+    example = (Path(__file__).resolve().parents[1] / ".env.example").read_text()
+    values = dict(
+        line.split("=", 1) for line in example.splitlines() if line.startswith("DESCRIBE_")
+    )
+    fields = Settings.model_fields
+    for name in ("DESCRIBE_COOLDOWN_S", "DESCRIBE_SCENE_RESET_S", "DESCRIBE_EMPTY_RESET_S"):
+        assert float(values[name]) == fields[name.lower()].default
