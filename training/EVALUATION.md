@@ -138,3 +138,21 @@ See [MVP_HANDOFF.md](../docs/MVP_HANDOFF.md) for model hashes, the controlled se
 Run the full local evaluation regression suite in the ML environment with `python -B -m unittest discover -s training -p "test_*.py"`. The lightweight CI suite installs `requirements-checks.txt` and runs the four non-ML test modules explicitly; OWLv2's metric test additionally requires the ML environment.
 
 The fixed scorer also writes a detailed JSON beside its CSV, including per-image ground truth and scores. `docs/results_v2_operating_points.json` is ignored by Git; share it with the large run artifacts. Versioned comparison tables and `POST_TRAINING_V2.json` contain the compact results.
+
+## V3 comparison charts
+
+The supplied v3 plain/storm weights record fresh YOLO26s runs of 15 epochs. Reuse the unchanged 634-image benchmark and the matching-protocol stock/v2 AP CSV; write v3 scores to a new CSV:
+
+```powershell
+python training/evaluate.py --models server/weights/best_plain_v3.pt server/weights/best_storm_v3.pt --save-json --output docs/results_v3.csv --project runs/post_training_v3/test_ap
+```
+
+Use the existing eight-thread evaluator environment for timing consistency. Preserve full raw prediction artifacts, v2/v3 checkpoint metadata, and the per-image v2 reference JSON shared outside Git. Render both presentation charts and the compact comparison report with:
+
+```powershell
+python training/compare_models.py --ap-results docs/results_v2.csv docs/results_v3.csv --reference docs/results_v2_operating_points.json --v2-metadata runs/post_training_v2/checkpoint_metadata.json --v3-metadata runs/post_training_v3/checkpoint_metadata.json --output docs/V3_MODEL_COMPARISON.md --figure-dir docs/figures
+```
+
+The generator verifies checkpoint/dataset hashes and common AP settings, then writes mAP and precision/recall/F2 charts as PNG, SVG, and PDF. Every fixed-confidence score uses the predeclared 0.15 point, including stock (whose older selected threshold was 0.05). No test threshold sweep occurs. Use fresh output paths; previous comparison artifacts are not replaced.
+
+The supplied metadata also records patience 5 versus 10, a dropout argument change, and a newer training package version. Describe measured benchmark differences rather than attributing them solely to epoch count. Training/test separation retains the existing unverified status, and the running server is unchanged by offline evaluation.

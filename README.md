@@ -2,7 +2,7 @@
 
 Iris helps rescuers spot visible people in rubble, flood, and storm footage using a wearable camera and a person detector. Meta Ray-Ban Display glasses send frames through an iPhone app to a FastAPI server. Detection boxes appear on the phone and glasses HUD; optional Gemini scene descriptions are spoken through the phone's audio route.
 
-The stock-YOLO26 prototype is being demoed by the team. The fine-tuned v2 models have completed local image evaluation, offline clip checks, and isolated HTTP checks. The remaining acceptance checks are in the [MVP handoff](docs/MVP_HANDOFF.md).
+The team is demonstrating the stock-YOLO26 prototype. The latest v3 model evaluation is complete, with results and charts below. See the [MVP handoff](docs/MVP_HANDOFF.md) for the app/server workflow.
 
 ## How it works
 
@@ -15,17 +15,17 @@ The server also provides a browser live view, recent events, health/model identi
 
 ## Training and evaluation
 
-Two v2 YOLO26s checkpoints were supplied: plain training and storm augmentation. On the corrected 634-image / 1,819-person-box benchmark:
+The v3 YOLO26s models completed evaluation on the same corrected **634-image, 1,819-person-box** benchmark. Each v3 model records a fresh 15-epoch training run.
 
-| Model | mAP50 | mAP50-95 |
-| --- | ---: | ---: |
-| Stock YOLO26s | 32.48% | 14.81% |
-| Plain v2 | 57.88% | 31.81% |
-| Storm v2 | 64.56% | 37.76% |
+| Model | mAP50 |
+| --- | ---: |
+| Stock YOLO26s | 32.48% |
+| Plain v3 | 53.04% |
+| Storm v3 | 57.96% |
 
-These are conditional benchmark results: C's actual training/test exclusions still need verification. Original source-training exports retain copies of the test images; that alone does not establish which images the v2 runs saw. The [v2 report](docs/POST_TRAINING_V2.md) includes frozen-threshold recall/F2, recovered training histories, clip limitations, and the [split request for C](docs/REQUEST_V2_SPLITS.md). Historical stock, v1, and OWLv2 results remain in `docs/results.csv`.
+See the [v3 comparison and charts](docs/V3_MODEL_COMPARISON.md) for mAP50-95, precision/recall/F2, evaluation settings, and historical v2 results. Historical stock, v1, and OWLv2 results remain in `docs/results.csv`.
 
-The detector finds visible people. It does not distinguish rescuers from survivors or predict where an unseen survivor is located. Clip detections and event counts are not survivor accuracy; target annotations still need review.
+The detector identifies visible people. It does not distinguish rescuers from survivors or locate unseen people.
 
 ## Project layout
 

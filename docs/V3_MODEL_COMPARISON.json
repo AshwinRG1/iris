@@ -1,0 +1,171 @@
+{
+  "images": 634,
+  "person_boxes": 1819,
+  "rows": [
+    {
+      "model": "yolo26s",
+      "model_sha256": "646f8bc3fe0a656803d95c294f7852321748cb29d13466a1af8862e2db384a1b",
+      "map50": 0.3248103019102201,
+      "map50_95": 0.1480816891042657,
+      "ap_summary_precision": 0.4901517000214114,
+      "ap_summary_recall": 0.31115997800989553,
+      "fixed_confidence": 0.15,
+      "fixed_precision": 0.5959339263024143,
+      "fixed_recall": 0.25783397471137987,
+      "fixed_f2": 0.2908346769192608,
+      "tp": 469,
+      "fp": 318,
+      "fn": 1350,
+      "inference_ms_per_image": 125.5071429010684
+    },
+    {
+      "model": "best_plain_v2",
+      "model_sha256": "99ad8b2cd491c374804b19437b6c4b9a79b2302dfbb377e73b034017375dcfdf",
+      "map50": 0.578847229453982,
+      "map50_95": 0.31807792951264685,
+      "ap_summary_precision": 0.7250912182489071,
+      "ap_summary_recall": 0.5376580538757559,
+      "fixed_confidence": 0.15,
+      "fixed_precision": 0.5160403299725023,
+      "fixed_recall": 0.6190214403518417,
+      "fixed_f2": 0.5952632691901035,
+      "tp": 1126,
+      "fp": 1056,
+      "fn": 693,
+      "inference_ms_per_image": 126.81785504714135
+    },
+    {
+      "model": "best_storm_v2",
+      "model_sha256": "f64d01bc6637b3a114b389881ff2fe4ecc24a603b0ccdb43ca6a07226e0c3163",
+      "map50": 0.6455948635656239,
+      "map50_95": 0.3776371392332472,
+      "ap_summary_precision": 0.7676622370843197,
+      "ap_summary_recall": 0.6030786146234195,
+      "fixed_confidence": 0.15,
+      "fixed_precision": 0.5793726235741445,
+      "fixed_recall": 0.6701484332050577,
+      "fixed_f2": 0.6497867803837952,
+      "tp": 1219,
+      "fp": 885,
+      "fn": 600,
+      "inference_ms_per_image": 130.65210788660207
+    },
+    {
+      "model": "best_plain_v3",
+      "model_sha256": "8e586093809d2fce6cc918e788b62e4f2636551aa9e6d1acd75df32b6830d062",
+      "map50": 0.5303710172018673,
+      "map50_95": 0.28313035664287767,
+      "ap_summary_precision": 0.6612309971088981,
+      "ap_summary_recall": 0.4920285871357889,
+      "fixed_confidence": 0.15,
+      "fixed_precision": 0.4671985815602837,
+      "fixed_recall": 0.5794392523364486,
+      "fixed_f2": 0.5528745279060008,
+      "tp": 1054,
+      "fp": 1202,
+      "fn": 765,
+      "inference_ms_per_image": 579.8881227135043
+    },
+    {
+      "model": "best_storm_v3",
+      "model_sha256": "d3bbec4be542b21b026ea3ea2684640c8e0ba0f8fcbcdb478da5ed3f392f1bf7",
+      "map50": 0.5795737021250792,
+      "map50_95": 0.3170109312246815,
+      "ap_summary_precision": 0.7171534689351279,
+      "ap_summary_recall": 0.5349092908191314,
+      "fixed_confidence": 0.15,
+      "fixed_precision": 0.4971302428256071,
+      "fixed_recall": 0.6190214403518417,
+      "fixed_f2": 0.5900848967613458,
+      "tp": 1126,
+      "fp": 1139,
+      "fn": 693,
+      "inference_ms_per_image": 558.6097575709435
+    }
+  ],
+  "protocol": {
+    "split": "test",
+    "classes": "person",
+    "images": "634",
+    "device": "cpu",
+    "imgsz": "640",
+    "batch": "1",
+    "conf": "0.001",
+    "iou": "0.7",
+    "ultralytics_version": "8.4.178"
+  },
+  "fixed_confidence": 0.15,
+  "threshold_origin": "Retained 0.15 comparison point agreed before v3 evaluation; not selected or optimized on v3 test results.",
+  "ground_truth_reference_sha256": "32da6cfd88214e50afaac94846f15e60ba60e7013cc848124e555412a250d9db",
+  "ap_csv_sha256": {
+    "docs\\results_v2.csv": "ccf03613ccfffe53e1b6c0a49b321da0f1e0f0007f5d3aace27c04c8927f4aea",
+    "docs\\results_v3.csv": "d66a6a888ad7a39b008b7dc001dceae41ec7c9adff948db43ae3f1f9be81d555"
+  },
+  "v3_checkpoint_metadata": [
+    {
+      "file": "server\\weights\\best_plain_v3.pt",
+      "sha256": "8e586093809d2fce6cc918e788b62e4f2636551aa9e6d1acd75df32b6830d062",
+      "parameters": 9948638,
+      "version": "8.4.182",
+      "base": "yolo26s.pt",
+      "epochs": 15,
+      "recorded_epochs": 15,
+      "resume": false,
+      "argument_differences_from_v2": {
+        "epochs": {
+          "v2": 50,
+          "v3": 15
+        },
+        "dropout": {
+          "v2": 0.0,
+          "v3": 0.1
+        },
+        "patience": {
+          "v2": 10,
+          "v3": 5
+        },
+        "name": {
+          "v2": "plain_v2",
+          "v3": "plain_v3"
+        }
+      }
+    },
+    {
+      "file": "server\\weights\\best_storm_v3.pt",
+      "sha256": "d3bbec4be542b21b026ea3ea2684640c8e0ba0f8fcbcdb478da5ed3f392f1bf7",
+      "parameters": 9948638,
+      "version": "8.4.182",
+      "base": "yolo26s.pt",
+      "epochs": 15,
+      "recorded_epochs": 15,
+      "resume": false,
+      "argument_differences_from_v2": {
+        "epochs": {
+          "v2": 50,
+          "v3": 15
+        },
+        "dropout": {
+          "v2": 0.0,
+          "v3": 0.1
+        },
+        "patience": {
+          "v2": 10,
+          "v3": 5
+        },
+        "name": {
+          "v2": "storm_v2-2",
+          "v3": "storm_v3"
+        }
+      }
+    }
+  ],
+  "historical_training_membership_verified": false,
+  "deployment_changed": false,
+  "limitations": [
+    "Benchmark results do not certify independent unseen-scene performance.",
+    "Training budget changed along with patience and recorded dropout; training package version differs.",
+    "Dropout is classification-only in the installed Ultralytics code; its recorded value is not evidence of an active detection-model change.",
+    "Fixed-confidence scores are greedy IoU 0.5 matches; AP summary precision/recall use the Ultralytics confidence curve.",
+    "CPU timings are single-run values, not evidence of a speed improvement."
+  ]
+}
