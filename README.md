@@ -1,40 +1,41 @@
 # Iris
 
-Iris is a wearable computer vision project designed to help rescuers spot people in rubble, storm, and flood scenes. Camera frames from Meta glasses travel through an iPhone app to a Python server, which detects possible people and returns short directional alerts such as **"possible person, left."** The phone speaks these alerts through the glasses so the wearer can keep looking at the scene.
+Iris helps rescuers spot visible people in rubble, flood, and storm footage using a wearable camera and a person detector. Meta Ray-Ban Display glasses send frames through an iPhone app to a FastAPI server. Detection boxes appear on the phone and glasses HUD; optional Gemini scene descriptions are spoken through the phone's audio route.
 
-The project is in development. The architecture and features below describe the implementation planned in [the team plan](plan.md).
+The stock-YOLO26 prototype is being demoed by the team. The fine-tuned v2 models have completed local image evaluation, offline clip checks, and isolated HTTP checks. The remaining acceptance checks are in the [MVP handoff](docs/MVP_HANDOFF.md).
 
 ## How it works
 
-1. Meta Ray-Ban Display glasses, or a matching Mock Device Kit device for demos, provide camera frames to the iOS app.
-2. The app sends JPEG frames at approximately 2–3 frames per second to the server.
-3. A YOLO26 detector locates people. The server uses confidence thresholds, consecutive detections, and a cooldown to control spoken alerts.
-4. The app receives a direction—left, ahead, or right—and speaks the alert.
+1. Glasses or the Mock Device Kit provide camera frames to the iOS app.
+2. The app uploads 640-pixel JPEGs at up to 2.5 fps, with one request at a time.
+3. The server detects people, returns normalized boxes and directions, and controls detection events with confidence thresholds and cooldowns.
+4. The app draws detections and speaks new Gemini descriptions once per description ID. Directional `alert` text is display-only in the current app; without descriptions, detection boxes still work but there is no spoken alert.
 
-A browser live view is planned to show annotated frames and recent alerts. Optional Gemini descriptions will provide a short account of visible people and nearby hazards when an alert occurs. The server can run on a laptop or a Vultr instance.
+The server also provides a browser live view, recent events, health/model identity, and latency statistics. See the [app guide](app/README.md) and [server design](docs/server-design.md) for setup and behavior. [The original team plan](plan.md) records the initial division of work; newer implementation guides describe the current behavior.
 
 ## Training and evaluation
 
-The training workflow combines rubble and person-in-water datasets in YOLO format, with a shared class set. Two detectors will be fine-tuned: one using the original training images and another including storm augmentation such as rain, fog, blur, darkness, and noise.
+Two v2 YOLO26s checkpoints were supplied: plain training and storm augmentation. On the corrected 634-image / 1,819-person-box benchmark:
 
-Evaluation will compare stock YOLO26, an OWLv2 zero-shot baseline, and both fine-tuned models on a held-out test split and independent demo clips. Planned results include mAP, detection rate on clips, and latency per frame. Validation and test images remain unaugmented and separate from training.
+| Model | mAP50 | mAP50-95 |
+| --- | ---: | ---: |
+| Stock YOLO26s | 32.48% | 14.81% |
+| Plain v2 | 57.88% | 31.81% |
+| Storm v2 | 64.56% | 37.76% |
+
+These are conditional benchmark results: C's actual training/test exclusions still need verification. Original source-training exports retain copies of the test images; that alone does not establish which images the v2 runs saw. The [v2 report](docs/POST_TRAINING_V2.md) includes frozen-threshold recall/F2, recovered training histories, clip limitations, and the [split request for C](docs/REQUEST_V2_SPLITS.md). Historical stock, v1, and OWLv2 results remain in `docs/results.csv`.
+
+The detector finds visible people. It does not distinguish rescuers from survivors or predict where an unseen survivor is located. Clip detections and event counts are not survivor accuracy; target annotations still need review.
 
 ## Project layout
 
-The planned file layout is:
-
 | Path | Purpose |
 | --- | --- |
-| `app/` | iOS camera streaming, frame upload, and spoken alerts |
-| `server/` | FastAPI server, detection, alert logic, and optional Gemini integration |
-| `training/` | Dataset merging, augmentation, training, and evaluation scripts |
-| `data/merged/` | Prepared datasets and their splits |
-| `data/demo_clips/` | Independent footage for evaluation and demos |
-| `server/weights/` | Fine-tuned detector checkpoints |
-| `docs/results.csv` | Model comparison results |
+| `app/` | iOS streaming, uploads, detection HUD, and description speech |
+| `server/` | FastAPI API, inference, event policy, live view, and Gemini |
+| `training/` | Dataset preparation, model evaluation, diagnostics, and integration checks |
+| `data/` | Local datasets, annotations, and demo footage; ignored by Git |
+| `server/weights/` | Local checkpoints; ignored by Git |
+| `docs/` | Results, footage credits, and handoff guides |
 
-Datasets, model weights, and demo clips are shared separately through Google Drive rather than committed to Git.
-
-## Dependencies and setup
-
-See [dependencies.md](dependencies.md) for the planned Python packages, iOS tools, model assets, and external services, grouped by component.
+Start with [dependencies.md](dependencies.md), the [evaluation commands](training/EVALUATION.md), and the [demo clip guide](docs/DEMO_CLIPS.md). Datasets, weights, demo videos, and large run artifacts are shared separately through the team's Drive, rather than Git.
