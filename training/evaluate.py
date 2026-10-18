@@ -2,14 +2,16 @@
 
 import argparse
 import csv
+import hashlib
+import json
 import math
 from datetime import datetime, timezone
 from pathlib import Path
 
 DEFAULT_MODELS = [
     "yolo26s.pt",
-    "server/weights/best_plain.pt",
-    "server/weights/best_storm.pt",
+    "server/weights/best_plain_v2.pt",
+    "server/weights/best_storm_v2.pt",
 ]
 FIELDS = [
     "timestamp_utc", "model", "data", "split", "classes", "images",
@@ -130,16 +132,51 @@ def evaluate(args):
             validation["images"] = validator.seen
 
         model.add_callback("on_val_end", capture_validation)
+        extra = {}
+        source_hash = None
+        if getattr(args, "save_json", False):
+            model_source = Path(getattr(model, "ckpt_path", checkpoint)).resolve()
+            source_hash = hashlib.sha256(model_source.read_bytes()).hexdigest()
+        if getattr(args, "save_json", False):
+            from ultralytics.models.yolo.detect.val import DetectionValidator
+
+            class PredictionSavingValidator(DetectionValidator):
+                def pred_to_json(self, predn, pbatch):
+                    path = Path(pbatch["im_file"])
+                    for box, score, cls in zip(predn["bboxes"].tolist(), predn["conf"].tolist(), predn["cls"].tolist()):
+                        if int(cls) not in class_ids:
+                            continue
+                        x1, y1, x2, y2 = box
+                        self.jdict.append({"image_id": path.stem, "file_name": path.name,
+                            "category_id": self.class_map[int(cls)], "bbox": [x1, y1, x2-x1, y2-y1],
+                            "score": score})
+
+                def eval_json(self, stats):
+                    # Preserve ordinary Ultralytics AP semantics. Saving predictions must
+                    # not silently switch to an external COCO evaluator or install it.
+                    return stats
+
+            extra["validator"] = PredictionSavingValidator
         metrics = model.val(
             data=str(data), split=args.split, classes=class_ids,
             imgsz=args.imgsz, batch=args.batch, device=args.device,
             conf=args.conf, iou=args.iou, workers=0, rect=False,
             half=False, augment=False, seed=0, plots=True,
             project=str(args.project), name=f"{index}_{Path(checkpoint).stem}",
-            exist_ok=False,
+            exist_ok=False, save_json=getattr(args, "save_json", False), **extra,
         )
         if validation["images"] != audit["images"]:
             raise ValueError("Validation skipped images; inspect corrupt-image warnings before reporting results.")
+        if source_hash is not None:
+            if hashlib.sha256(model_source.read_bytes()).hexdigest() != source_hash:
+                raise ValueError("Checkpoint changed during validation.")
+            provenance = {"checkpoint": str(model_source), "checkpoint_sha256": source_hash,
+                "data_yaml_sha256": hashlib.sha256(data.read_bytes()).hexdigest(),
+                "images": audit["images"], "split": args.split, "classes": names,
+                "imgsz": args.imgsz, "conf": args.conf, "nms_iou": args.iou,
+                "rect": False, "half": False, "augment": False, "batch": args.batch}
+            (Path(validation["artifacts"]) / "prediction_provenance.json").write_text(
+                json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
         row = dict(
             timestamp_utc=datetime.now(timezone.utc).isoformat(),
             model=checkpoint, data=str(data), split=args.split,
@@ -167,6 +204,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", type=Path, default=Path("data/test/data/data.yaml"))
     parser.add_argument("--models", nargs="+", default=[DEFAULT_MODELS[0]])
+    parser.add_argument("--save-json", action="store_true", help="Preserve per-image predictions for fixed-threshold metrics without rerunning inference")
     parser.add_argument("--check-data", action="store_true", help="Audit annotations without loading models")
     parser.add_argument("--split", choices=["test", "val"], default="test")
     parser.add_argument("--device", default="cpu", help="cpu, 0 for CUDA, or mps")

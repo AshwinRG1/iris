@@ -1,116 +1,45 @@
 # Iris dependencies
 
-This document lists dependencies from [the team plan](plan.md), plus the model runtime libraries needed for the planned OWLv2 baseline. Install the dependencies for the component you are working on. Package versions are not pinned yet; this document is a setup reference, not a reproducible environment lockfile.
+Use the requirements file for your component rather than installing every package. The server's requirements are pinned; training dependencies have their own version policy. Datasets, checkpoints, and video footage are additional assets shared outside Git.
 
-## Python environment
+| Component | Runtime and install command, from repository root |
+| --- | --- |
+| Server API | Standard CPython **3.12+**; `python -m pip install -r server/requirements.txt` |
+| Server YOLO inference | `python -m pip install -r server/requirements-ml.txt`; on CPU hosts install CPU PyTorch first as described in that file |
+| Server development | `python -m pip install -r server/requirements-dev.txt` |
+| Model training | `python -m pip install -r training/requirements.txt` |
+| YOLO evaluation | Standard CPython 3.11+; `python -m pip install -r training/requirements-eval.txt` |
+| OWLv2 evaluation | `python -m pip install -r training/requirements-zeroshot.txt` |
+| Demo conversion | `python -m pip install -r training/requirements-demo.txt`; FFmpeg/ffprobe, or the included `imageio-ffmpeg` fallback |
+| HTTP integration checker | Evaluation environment plus `httpx==0.28.1` (also installed by the server API requirements) |
+| Lightweight evaluation checks | `python -m pip install -r training/requirements-checks.txt` |
 
-Use Python and pip in a virtual environment. From the repository root:
+Create an environment with standard CPython. On Windows the MSYS Python installation is unsuitable for the standard Windows ML wheels:
 
 ```powershell
-python -m venv .venv
+python3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install -r server/requirements.txt
 ```
 
-On macOS or Linux, activate it with `source .venv/bin/activate` instead.
+Select a standard CPython executable installed on your machine; `python3.12` may resolve to MSYS on some setups. On macOS/Linux activate with `source .venv/bin/activate`. Keep local environments outside version control.
 
-## Server — Person B
+## Python packages and assets
 
-```shell
-python -m pip install ultralytics fastapi uvicorn python-multipart opencv-python
-```
+FastAPI/Uvicorn serve the API; Pydantic parses settings/replies; Pillow and OpenCV handle frames. Ultralytics/PyTorch run YOLO. `google-genai` is imported lazily for optional Gemini descriptions; install it separately (`python -m pip install google-genai`) if using that feature. It requires a Gemini API key configured in the server environment. No key is needed for a visual-only detector trial.
 
-| Package | Purpose |
-| --- | --- |
-| `ultralytics` | YOLO26 inference and model loading |
-| `fastapi` | Frame upload API and server endpoints |
-| `uvicorn` | Runs the FastAPI application |
-| `python-multipart` | Parses multipart JPEG uploads |
-| `opencv-python` | Image decoding, annotation, and frame processing |
-| `google-genai` | Optional Gemini scene descriptions |
+C's training uses Ultralytics and Albumentations. The evaluation tooling adds fixed-threshold precision/recall/F2, AP export, dataset audits, and optional OWLv2 via Transformers. See [EVALUATION.md](training/EVALUATION.md) and [OWLV2.md](training/OWLV2.md). Model downloads require network access on first use.
 
-For the Gemini integration:
+Required assets are stock `yolo26s.pt`, C's `best_plain_v2.pt` and `best_storm_v2.pt`, the repaired test images/labels, C's exact split records, and reviewed demo footage. Weights belong in `server/weights/` on the actual server host. The [MVP handoff](docs/MVP_HANDOFF.md) records hashes and trial settings.
 
-```shell
-python -m pip install google-genai
-```
+## iOS and hardware
 
-The plan assigns the server owner responsibility for recording the server environment in `server/requirements.txt`.
+Use the versions and setup instructions in [app/README.md](app/README.md): iOS 17.2+, Xcode 26.4+, Swift 6.3+, the Meta Wearables Device Access Toolkit, and Meta Ray-Ban Display glasses or the Mock Device Kit. A macOS/Xcode environment is required to build and run the app; Windows Python checks cannot validate physical glasses behavior.
 
-## Model training — Person C
+Apple's URLSession and AVSpeechSynthesizer are platform APIs, not pip dependencies. The app's current speech path reads Gemini descriptions; directional server alerts are display-only.
 
-```shell
-python -m pip install ultralytics albumentations
-```
+## Shared services
 
-| Package or resource | Purpose |
-| --- | --- |
-| `ultralytics` | Fine-tunes the YOLO26 detector |
-| `albumentations` | Adds rain, fog, blur, darkness, and noise to training images |
-| Roboflow account | Accesses and exports selected datasets in YOLO format |
-| Colab or Vultr GPU access | Runs the planned training jobs |
-| `yolo26s.pt` | Starting checkpoint for the plain and storm-augmented runs |
+Git/GitHub support collaboration; the team's Drive carries data, weights, footage and large run artifacts. Google AI Studio/Gemini supplies optional descriptions. A Vultr instance can host the server; local hosting remains available. Roboflow provides the selected source exports and Colab/GPU access supports training.
 
-C provides the merged dataset, final class names, held-out test split, and both trained checkpoints to the relevant teammates.
-
-## Model evaluation — Person D
-
-```shell
-python -m pip install ultralytics transformers torch torchvision pillow opencv-python
-```
-
-| Package | Purpose |
-| --- | --- |
-| `ultralytics` | Evaluates stock and fine-tuned YOLO models |
-| `transformers` | Loads the OWLv2 processor and model |
-| `torch` and `torchvision` | Model inference runtime and vision operations |
-| `pillow` | Image loading and conversion for the OWLv2 workflow |
-| `opencv-python` | Reads demo clips and processes video frames |
-
-PyTorch is also used by Ultralytics. For GPU execution, select a PyTorch build compatible with the machine's GPU and drivers using the [official installation selector](https://pytorch.org/get-started/locally/).
-
-Required evaluation assets:
-
-- Stock checkpoint: `yolo26s.pt`.
-- Zero-shot model: `google/owlv2-base-patch16-ensemble` from Hugging Face.
-- C's plain and storm-augmented checkpoints, with their class names.
-- C's held-out test dataset and independent demo clips.
-
-Model downloads require network access on first use.
-
-### Video conversion
-
-Install the standalone FFmpeg executable with `libx265` support and make it available on `PATH`. A Python FFmpeg wrapper alone does not provide this executable.
-
-The planned demo conversion is:
-
-```shell
-ffmpeg -i clip.mp4 -c:v libx265 -tag:v hvc1 clip_h265.mp4
-```
-
-## iOS app — Person A
-
-| Tool or resource | Purpose |
-| --- | --- |
-| Mac with Xcode | Builds and runs the iOS app |
-| iPhone with Developer Mode enabled | Runs the app on a physical device |
-| [Meta Wearables DAT iOS SDK and CameraAccess sample](https://github.com/facebook/meta-wearables-dat-ios) | Camera access and starting app integration |
-| Meta Mock Device Kit | Supplies mock camera footage for development and demos |
-| Wearables Developer Center organization, project, and Application ID | Configures the Meta integration |
-| Meta glasses | Supplies the camera feed and audio output for the intended wearable workflow |
-
-The app uses Apple's `URLSession` for frame uploads and `AVSpeechSynthesizer` for speech. These are platform APIs rather than pip packages. The plan also requires local-network permissions in the app configuration.
-
-## Optional services and shared resources
-
-| Service or resource | Purpose |
-| --- | --- |
-| Google AI Studio / Gemini API key | Enables optional scene descriptions |
-| Vultr Ubuntu instance | Hosts the server remotely; a laptop is the local fallback |
-| Shared Google Drive folder | Stores datasets, weights, and demo clips outside Git |
-| Git and individual GitHub credentials | Repository collaboration |
-
-Keep API keys and other credentials out of Git. The plan specifies environment variables and a local `.env` file for secrets; any automatic `.env` loading must be configured by the server implementation.
-
-## OWLv2 baseline setup
-
-Install `training/requirements-zeroshot.txt` for the tested evaluator environment (`transformers==4.57.1` plus SciPy and the pinned Ultralytics evaluator). See [the OWLv2 guide](training/OWLV2.md) for full evaluation and server activation. The standalone evaluator supports Python 3.11; the full server requires Python 3.12.
+Keep keys in the existing server environment or explicitly configured local env file, and outside Git. Preserve footage credits and licenses when sharing demo clips; see [DEMO_CLIPS.md](docs/DEMO_CLIPS.md).

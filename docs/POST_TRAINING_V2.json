@@ -1,0 +1,1388 @@
+{
+  "created_from_run": "C:\\Users\\madhs\\iris\\runs\\post_training_v2",
+  "weights": [
+    {
+      "file": "server\\weights\\best_plain_v2.pt",
+      "sha256": "99ad8b2cd491c374804b19437b6c4b9a79b2302dfbb377e73b034017375dcfdf",
+      "parameters": 9948638,
+      "task": "detect",
+      "names": {
+        "0": "person"
+      },
+      "epoch": -1,
+      "best_fitness": null,
+      "date": "2026-10-17T23:55:20.989771+00:00",
+      "version": "8.4.181",
+      "train_metrics": {
+        "metrics/precision(B)": 0.66041,
+        "metrics/recall(B)": 0.45279,
+        "metrics/mAP50(B)": 0.5021,
+        "metrics/mAP50-95(B)": 0.25219,
+        "val/box_loss": 1.25626,
+        "val/cls_loss": 0.8461,
+        "val/l1_loss": 0.00958,
+        "fitness": 0.25219
+      },
+      "checkpoint_keys": [
+        "date",
+        "version",
+        "license",
+        "docs",
+        "epoch",
+        "best_fitness",
+        "stopper",
+        "model",
+        "ema",
+        "updates",
+        "modelopt",
+        "optimizer",
+        "scaler",
+        "train_args",
+        "train_metrics",
+        "train_results",
+        "git"
+      ],
+      "training_arguments": {
+        "task": "detect",
+        "mode": "train",
+        "model": "yolo26s.pt",
+        "data": "/content/data/merged/data.yaml",
+        "epochs": 50,
+        "time": null,
+        "patience": 10,
+        "batch": 16,
+        "imgsz": 640,
+        "save": true,
+        "save_period": -1,
+        "cache": false,
+        "device": "",
+        "workers": 8,
+        "project": "/content/drive/MyDrive/iris_runs",
+        "name": "plain_v2",
+        "exist_ok": false,
+        "pretrained": true,
+        "cls_remap": true,
+        "optimizer": "AdamW",
+        "verbose": true,
+        "seed": 0,
+        "deterministic": true,
+        "single_cls": false,
+        "rect": false,
+        "cos_lr": false,
+        "close_mosaic": 10,
+        "resume": false,
+        "amp": true,
+        "fraction": 1.0,
+        "profile": false,
+        "freeze": null,
+        "multi_scale": 0.0,
+        "compile": false,
+        "channels_last": null,
+        "overlap_mask": true,
+        "mask_ratio": 4,
+        "dropout": 0.0,
+        "val": true,
+        "split": "val",
+        "save_json": false,
+        "conf": null,
+        "iou": 0.7,
+        "max_det": 300,
+        "quantize": null,
+        "dnn": false,
+        "plots": true,
+        "nms": null,
+        "source": null,
+        "vid_stride": 1,
+        "stream_buffer": false,
+        "visualize": false,
+        "augment": false,
+        "agnostic_nms": false,
+        "classes": null,
+        "retina_masks": false,
+        "embed": null,
+        "show": false,
+        "save_frames": false,
+        "save_txt": false,
+        "save_conf": false,
+        "save_crop": false,
+        "show_labels": true,
+        "show_conf": true,
+        "show_boxes": true,
+        "line_width": null,
+        "format": "torchscript",
+        "optimize": false,
+        "dynamic": false,
+        "simplify": true,
+        "opset": null,
+        "workspace": null,
+        "lr0": 0.002,
+        "lrf": 0.01,
+        "momentum": 0.937,
+        "weight_decay": 0.0005,
+        "warmup_epochs": 3.0,
+        "warmup_momentum": 0.8,
+        "warmup_bias_lr": 0.0,
+        "distill_model": null,
+        "dis": 6.0,
+        "box": 7.5,
+        "cls": 0.5,
+        "cls_pw": 0.0,
+        "dfl": 1.5,
+        "pose": 12.0,
+        "kobj": 1.0,
+        "rle": 1.0,
+        "angle": 1.0,
+        "dlog": 1.0,
+        "dgrad": 0.5,
+        "dlam": 1.0,
+        "nbs": 64,
+        "hsv_h": 0.015,
+        "hsv_s": 0.7,
+        "hsv_v": 0.4,
+        "degrees": 0.0,
+        "translate": 0.1,
+        "scale": 0.5,
+        "shear": 0.0,
+        "perspective": 0.0,
+        "flipud": 0.0,
+        "fliplr": 0.5,
+        "bgr": 0.0,
+        "mosaic": 1.0,
+        "mixup": 0.0,
+        "cutmix": 0.0,
+        "copy_paste": 0.0,
+        "copy_paste_mode": "flip",
+        "auto_augment": "randaugment",
+        "erasing": 0.4,
+        "cfg": null,
+        "tracker": "tracktrack.yaml"
+      },
+      "recorded_epochs": 50
+    },
+    {
+      "file": "server\\weights\\best_storm_v2.pt",
+      "sha256": "f64d01bc6637b3a114b389881ff2fe4ecc24a603b0ccdb43ca6a07226e0c3163",
+      "parameters": 9948638,
+      "task": "detect",
+      "names": {
+        "0": "person"
+      },
+      "epoch": -1,
+      "best_fitness": null,
+      "date": "2026-10-18T04:14:05.470714+00:00",
+      "version": "8.4.181",
+      "train_metrics": {
+        "metrics/precision(B)": 0.666,
+        "metrics/recall(B)": 0.45165,
+        "metrics/mAP50(B)": 0.49908,
+        "metrics/mAP50-95(B)": 0.25467,
+        "val/box_loss": 1.22937,
+        "val/cls_loss": 0.74309,
+        "val/l1_loss": 0.00926,
+        "fitness": 0.25467
+      },
+      "checkpoint_keys": [
+        "date",
+        "version",
+        "license",
+        "docs",
+        "epoch",
+        "best_fitness",
+        "stopper",
+        "model",
+        "ema",
+        "updates",
+        "modelopt",
+        "optimizer",
+        "scaler",
+        "train_args",
+        "train_metrics",
+        "train_results",
+        "git"
+      ],
+      "training_arguments": {
+        "task": "detect",
+        "mode": "train",
+        "model": "yolo26s.pt",
+        "data": "/content/data/merged_storm/data.yaml",
+        "epochs": 50,
+        "time": null,
+        "patience": 10,
+        "batch": 16,
+        "imgsz": 640,
+        "save": true,
+        "save_period": -1,
+        "cache": false,
+        "device": "",
+        "workers": 8,
+        "project": "/content/drive/MyDrive/iris_runs",
+        "name": "storm_v2-2",
+        "exist_ok": false,
+        "pretrained": true,
+        "cls_remap": true,
+        "optimizer": "AdamW",
+        "verbose": true,
+        "seed": 0,
+        "deterministic": true,
+        "single_cls": false,
+        "rect": false,
+        "cos_lr": false,
+        "close_mosaic": 10,
+        "resume": false,
+        "amp": true,
+        "fraction": 1.0,
+        "profile": false,
+        "freeze": null,
+        "multi_scale": 0.0,
+        "compile": false,
+        "channels_last": null,
+        "overlap_mask": true,
+        "mask_ratio": 4,
+        "dropout": 0.0,
+        "val": true,
+        "split": "val",
+        "save_json": false,
+        "conf": null,
+        "iou": 0.7,
+        "max_det": 300,
+        "quantize": null,
+        "dnn": false,
+        "plots": true,
+        "nms": null,
+        "source": null,
+        "vid_stride": 1,
+        "stream_buffer": false,
+        "visualize": false,
+        "augment": false,
+        "agnostic_nms": false,
+        "classes": null,
+        "retina_masks": false,
+        "embed": null,
+        "show": false,
+        "save_frames": false,
+        "save_txt": false,
+        "save_conf": false,
+        "save_crop": false,
+        "show_labels": true,
+        "show_conf": true,
+        "show_boxes": true,
+        "line_width": null,
+        "format": "torchscript",
+        "optimize": false,
+        "dynamic": false,
+        "simplify": true,
+        "opset": null,
+        "workspace": null,
+        "lr0": 0.002,
+        "lrf": 0.01,
+        "momentum": 0.937,
+        "weight_decay": 0.0005,
+        "warmup_epochs": 3.0,
+        "warmup_momentum": 0.8,
+        "warmup_bias_lr": 0.0,
+        "distill_model": null,
+        "dis": 6.0,
+        "box": 7.5,
+        "cls": 0.5,
+        "cls_pw": 0.0,
+        "dfl": 1.5,
+        "pose": 12.0,
+        "kobj": 1.0,
+        "rle": 1.0,
+        "angle": 1.0,
+        "dlog": 1.0,
+        "dgrad": 0.5,
+        "dlam": 1.0,
+        "nbs": 64,
+        "hsv_h": 0.015,
+        "hsv_s": 0.7,
+        "hsv_v": 0.4,
+        "degrees": 0.0,
+        "translate": 0.1,
+        "scale": 0.5,
+        "shear": 0.0,
+        "perspective": 0.0,
+        "flipud": 0.0,
+        "fliplr": 0.5,
+        "bgr": 0.0,
+        "mosaic": 1.0,
+        "mixup": 0.0,
+        "cutmix": 0.0,
+        "copy_paste": 0.0,
+        "copy_paste_mode": "flip",
+        "auto_augment": "randaugment",
+        "erasing": 0.4,
+        "cfg": null,
+        "tracker": "tracktrack.yaml"
+      },
+      "recorded_epochs": 50
+    }
+  ],
+  "training_checks": [
+    {
+      "file": "server\\weights\\best_plain_v2.pt",
+      "epochs_recorded": 50,
+      "first_epoch": 1,
+      "last_epoch": 50,
+      "all_history_columns_finite": true,
+      "architecture_base": "yolo26s.pt",
+      "person_class_id_zero": true,
+      "dataset_snapshot_available": false,
+      "optimizer": "AdamW",
+      "lr0": 0.002,
+      "seed": 0,
+      "imgsz": 640,
+      "batch": 16
+    },
+    {
+      "file": "server\\weights\\best_storm_v2.pt",
+      "epochs_recorded": 50,
+      "first_epoch": 1,
+      "last_epoch": 50,
+      "all_history_columns_finite": true,
+      "architecture_base": "yolo26s.pt",
+      "person_class_id_zero": true,
+      "dataset_snapshot_available": false,
+      "optimizer": "AdamW",
+      "lr0": 0.002,
+      "seed": 0,
+      "imgsz": 640,
+      "batch": 16
+    }
+  ],
+  "source_overlap_audit": {
+    "source_training_images_checked": 6348,
+    "exact_source_train_validation_matches": 0,
+    "exact_source_train_held_out_matches": 634,
+    "limitation": "This audits ORIGINAL export folders, not C actual v2 merged training membership. Any held-out source images must be explicitly excluded by C split manifest. Near-duplicate/video grouping is not verified."
+  },
+  "ap_results": [
+    {
+      "timestamp_utc": "2026-10-18T05:27:44.286659+00:00",
+      "model": "yolo26s.pt",
+      "data": "C:\\Users\\madhs\\iris\\data\\test\\data\\data.yaml",
+      "split": "test",
+      "classes": "person",
+      "images": "634",
+      "precision": "0.4901517000214114",
+      "recall": "0.31115997800989553",
+      "map50": "0.3248103019102201",
+      "map50_95": "0.1480816891042657",
+      "inference_ms_per_image": "125.5071429010684",
+      "preprocess_ms_per_image": "0.6979862778438021",
+      "postprocess_ms_per_image": "2.02912634118513",
+      "device": "cpu",
+      "imgsz": "640",
+      "batch": "1",
+      "conf": "0.001",
+      "iou": "0.7",
+      "ultralytics_version": "8.4.178",
+      "artifacts": "C:\\Users\\madhs\\iris\\runs\\detect\\runs\\post_training_v2\\test_ap\\0_yolo26s"
+    },
+    {
+      "timestamp_utc": "2026-10-18T05:29:14.121028+00:00",
+      "model": "server/weights/best_plain_v2.pt",
+      "data": "C:\\Users\\madhs\\iris\\data\\test\\data\\data.yaml",
+      "split": "test",
+      "classes": "person",
+      "images": "634",
+      "precision": "0.7250912182489071",
+      "recall": "0.5376580538757559",
+      "map50": "0.578847229453982",
+      "map50_95": "0.31807792951264685",
+      "inference_ms_per_image": "126.81785504714135",
+      "preprocess_ms_per_image": "0.7123670345928802",
+      "postprocess_ms_per_image": "2.2967291806937618",
+      "device": "cpu",
+      "imgsz": "640",
+      "batch": "1",
+      "conf": "0.001",
+      "iou": "0.7",
+      "ultralytics_version": "8.4.178",
+      "artifacts": "C:\\Users\\madhs\\iris\\runs\\detect\\runs\\post_training_v2\\test_ap\\1_best_plain_v2"
+    },
+    {
+      "timestamp_utc": "2026-10-18T05:30:46.516718+00:00",
+      "model": "server/weights/best_storm_v2.pt",
+      "data": "C:\\Users\\madhs\\iris\\data\\test\\data\\data.yaml",
+      "split": "test",
+      "classes": "person",
+      "images": "634",
+      "precision": "0.7676622370843197",
+      "recall": "0.6030786146234195",
+      "map50": "0.6455948635656239",
+      "map50_95": "0.3776371392332472",
+      "inference_ms_per_image": "130.65210788660207",
+      "preprocess_ms_per_image": "0.7404176660994073",
+      "postprocess_ms_per_image": "3.1121116723628033",
+      "device": "cpu",
+      "imgsz": "640",
+      "batch": "1",
+      "conf": "0.001",
+      "iou": "0.7",
+      "ultralytics_version": "8.4.178",
+      "artifacts": "C:\\Users\\madhs\\iris\\runs\\detect\\runs\\post_training_v2\\test_ap\\2_best_storm_v2"
+    }
+  ],
+  "fixed_operating_point_results": [
+    {
+      "model": "C:\\Users\\madhs\\iris\\yolo26s.pt",
+      "model_sha256": "646f8bc3fe0a656803d95c294f7852321748cb29d13466a1af8862e2db384a1b",
+      "confidence": "0.05",
+      "images": "634",
+      "boxes": "1819",
+      "tp": "685",
+      "fp": "1152",
+      "fn": "1134",
+      "precision": "0.3728905824714208",
+      "recall": "0.3765805387575591",
+      "f2": "0.37583671677822894"
+    },
+    {
+      "model": "C:\\Users\\madhs\\iris\\server\\weights\\best_plain_v2.pt",
+      "model_sha256": "99ad8b2cd491c374804b19437b6c4b9a79b2302dfbb377e73b034017375dcfdf",
+      "confidence": "0.15",
+      "images": "634",
+      "boxes": "1819",
+      "tp": "1126",
+      "fp": "1056",
+      "fn": "693",
+      "precision": "0.5160403299725023",
+      "recall": "0.6190214403518417",
+      "f2": "0.5952632691901035"
+    },
+    {
+      "model": "C:\\Users\\madhs\\iris\\server\\weights\\best_storm_v2.pt",
+      "model_sha256": "f64d01bc6637b3a114b389881ff2fe4ecc24a603b0ccdb43ca6a07226e0c3163",
+      "confidence": "0.15",
+      "images": "634",
+      "boxes": "1819",
+      "tp": "1219",
+      "fp": "885",
+      "fn": "600",
+      "precision": "0.5793726235741445",
+      "recall": "0.6701484332050577",
+      "f2": "0.6497867803837952"
+    }
+  ],
+  "validation_thresholds": {
+    "yolo26s": {
+      "0.05": {
+        "tp": 3354,
+        "fp": 4361,
+        "fn": 6011,
+        "precision": 0.43473752430330526,
+        "recall": 0.3581420181526962,
+        "f2": 0.3712230215827338,
+        "ignored_predictions": 52
+      },
+      "0.1": {
+        "tp": 2773,
+        "fp": 2138,
+        "fn": 6592,
+        "precision": 0.5646507839543881,
+        "recall": 0.2961025093432995,
+        "f2": 0.32722852894668525,
+        "ignored_predictions": 17
+      },
+      "0.15": {
+        "tp": 2416,
+        "fp": 1330,
+        "fn": 6949,
+        "precision": 0.6449546182594768,
+        "recall": 0.2579818473037907,
+        "f2": 0.293161190117944,
+        "ignored_predictions": 7
+      },
+      "0.25": {
+        "tp": 1900,
+        "fp": 621,
+        "fn": 7465,
+        "precision": 0.753669178897263,
+        "recall": 0.20288307528029897,
+        "f2": 0.23761286611140295,
+        "ignored_predictions": 3
+      },
+      "0.35": {
+        "tp": 1528,
+        "fp": 326,
+        "fn": 7837,
+        "precision": 0.8241639697950378,
+        "recall": 0.1631607047517352,
+        "f2": 0.1943328076512184,
+        "ignored_predictions": 2
+      },
+      "0.5": {
+        "tp": 1062,
+        "fp": 123,
+        "fn": 8303,
+        "precision": 0.8962025316455696,
+        "recall": 0.11340096102509344,
+        "f2": 0.13740458015267176,
+        "ignored_predictions": 2
+      }
+    },
+    "best_plain_v2": {
+      "0.05": {
+        "tp": 5722,
+        "fp": 23376,
+        "fn": 3643,
+        "precision": 0.1966458175819644,
+        "recall": 0.6109983982915109,
+        "f2": 0.42985065657020943,
+        "ignored_predictions": 1169
+      },
+      "0.1": {
+        "tp": 5401,
+        "fp": 13367,
+        "fn": 3964,
+        "precision": 0.2877770673486786,
+        "recall": 0.5767218366257341,
+        "f2": 0.48027673045457775,
+        "ignored_predictions": 762
+      },
+      "0.15": {
+        "tp": 5113,
+        "fp": 8516,
+        "fn": 4252,
+        "precision": 0.3751559175287989,
+        "recall": 0.5459690336358782,
+        "f2": 0.5004012605453229,
+        "ignored_predictions": 523
+      },
+      "0.25": {
+        "tp": 4516,
+        "fp": 3705,
+        "fn": 4849,
+        "precision": 0.5493248996472448,
+        "recall": 0.4822210357714896,
+        "f2": 0.4942974103018761,
+        "ignored_predictions": 202
+      },
+      "0.35": {
+        "tp": 3788,
+        "fp": 1490,
+        "fn": 5577,
+        "precision": 0.7176960970064419,
+        "recall": 0.404484783769354,
+        "f2": 0.4431653329589593,
+        "ignored_predictions": 69
+      },
+      "0.5": {
+        "tp": 2567,
+        "fp": 296,
+        "fn": 6798,
+        "precision": 0.896611945511701,
+        "recall": 0.2741057127602776,
+        "f2": 0.3183046896312278,
+        "ignored_predictions": 5
+      }
+    },
+    "best_storm_v2": {
+      "0.05": {
+        "tp": 5555,
+        "fp": 18472,
+        "fn": 3810,
+        "precision": 0.2311982353185999,
+        "recall": 0.593166043780032,
+        "f2": 0.45172150210613626,
+        "ignored_predictions": 1050
+      },
+      "0.1": {
+        "tp": 5220,
+        "fp": 10748,
+        "fn": 4145,
+        "precision": 0.32690380761523047,
+        "recall": 0.5573945541911373,
+        "f2": 0.4885078984801977,
+        "ignored_predictions": 744
+      },
+      "0.15": {
+        "tp": 4919,
+        "fp": 7016,
+        "fn": 4446,
+        "precision": 0.4121491411813992,
+        "recall": 0.5252536038441004,
+        "f2": 0.4979248911833182,
+        "ignored_predictions": 496
+      },
+      "0.25": {
+        "tp": 4352,
+        "fp": 3164,
+        "fn": 5013,
+        "precision": 0.5790313996806812,
+        "recall": 0.4647090229578217,
+        "f2": 0.48381358946993946,
+        "ignored_predictions": 192
+      },
+      "0.35": {
+        "tp": 3707,
+        "fp": 1379,
+        "fn": 5658,
+        "precision": 0.728863546991742,
+        "recall": 0.39583555792845704,
+        "f2": 0.43564612419498894,
+        "ignored_predictions": 52
+      },
+      "0.5": {
+        "tp": 2685,
+        "fp": 350,
+        "fn": 6680,
+        "precision": 0.8846787479406919,
+        "recall": 0.28670581954084357,
+        "f2": 0.3315224101740955,
+        "ignored_predictions": 3
+      }
+    }
+  },
+  "provisional_candidate_from_development_f2": "best_plain_v2",
+  "clip_adapter_checks": {
+    "mode": "offline_real_server_adapter_and_alert_policy",
+    "selection": "C:\\Users\\madhs\\iris\\runs\\post_training_v2\\operating_points.json",
+    "validation_provenance_verified": false,
+    "sample_fps": 2.5,
+    "upload_width": 640,
+    "jpeg_quality": 70,
+    "timebase": "nominal clip time, not real request arrivals",
+    "rows": [
+      {
+        "model": "yolo26s",
+        "clip": "rubble_survivor_extraction.mp4",
+        "confidence": 0.05,
+        "frames": 50,
+        "person_frames": 50,
+        "alerts": [
+          {
+            "clip_seconds": 0.4166666666666667,
+            "text": "possible person, left",
+            "side": "left"
+          },
+          {
+            "clip_seconds": 4.416666666666667,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 8.416666666666666,
+            "text": "possible person, right",
+            "side": "right"
+          },
+          {
+            "clip_seconds": 13.208333333333334,
+            "text": "possible person, left",
+            "side": "left"
+          },
+          {
+            "clip_seconds": 17.208333333333332,
+            "text": "possible person, right",
+            "side": "right"
+          }
+        ],
+        "mean_detector_ms": 104.97391199984122,
+        "p95_detector_ms": 143.9808450013515,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "yolo26s",
+        "clip": "florence_rooftop_survivor.mp4",
+        "confidence": 0.05,
+        "frames": 60,
+        "person_frames": 59,
+        "alerts": [
+          {
+            "clip_seconds": 0.8333333333333334,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 8.416666666666666,
+            "text": "possible person, right",
+            "side": "right"
+          },
+          {
+            "clip_seconds": 12.416666666666666,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 16.416666666666668,
+            "text": "possible person, right",
+            "side": "right"
+          },
+          {
+            "clip_seconds": 20.416666666666668,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          }
+        ],
+        "mean_detector_ms": 100.44082166374817,
+        "p95_detector_ms": 131.40577998710796,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "yolo26s",
+        "clip": "harvey_night_flood_survivors.mp4",
+        "confidence": 0.05,
+        "frames": 43,
+        "person_frames": 43,
+        "alerts": [
+          {
+            "clip_seconds": 0.4166666666666667,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 4.416666666666667,
+            "text": "possible person, right",
+            "side": "right"
+          },
+          {
+            "clip_seconds": 8.416666666666666,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 12.416666666666666,
+            "text": "possible person, right",
+            "side": "right"
+          },
+          {
+            "clip_seconds": 16.416666666666668,
+            "text": "possible person, left",
+            "side": "left"
+          }
+        ],
+        "mean_detector_ms": 99.45052325641628,
+        "p95_detector_ms": 117.17802000348455,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "yolo26s",
+        "clip": "aerial_harvey_distant_flood_group.mp4",
+        "confidence": 0.05,
+        "frames": 18,
+        "person_frames": 18,
+        "alerts": [
+          {
+            "clip_seconds": 0.4166666666666667,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          }
+        ],
+        "mean_detector_ms": 95.6665055548203,
+        "p95_detector_ms": 107.65859999519306,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "yolo26s",
+        "clip": "aerial_harvey_rooftop_survivors.mp4",
+        "confidence": 0.05,
+        "frames": 40,
+        "person_frames": 36,
+        "alerts": [
+          {
+            "clip_seconds": 0.4166666666666667,
+            "text": "possible person, left",
+            "side": "left"
+          },
+          {
+            "clip_seconds": 4.416666666666667,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 14.416666666666666,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          }
+        ],
+        "mean_detector_ms": 99.90597250507562,
+        "p95_detector_ms": 120.00757000787416,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "yolo26s",
+        "clip": "lakewithrain_mock.mp4",
+        "confidence": 0.05,
+        "frames": 45,
+        "person_frames": 45,
+        "alerts": [
+          {
+            "clip_seconds": 0.4166666666666667,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 10.416666666666666,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 15.625,
+            "text": "possible person, right",
+            "side": "right"
+          }
+        ],
+        "mean_detector_ms": 89.62859777643138,
+        "p95_detector_ms": 110.40267998469061,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "yolo26s",
+        "clip": "rainy_night_negative.mp4",
+        "confidence": 0.05,
+        "frames": 15,
+        "person_frames": 0,
+        "alerts": [],
+        "mean_detector_ms": 123.22871999931522,
+        "p95_detector_ms": 141.06284000736193,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "best_plain_v2",
+        "clip": "rubble_survivor_extraction.mp4",
+        "confidence": 0.15,
+        "frames": 50,
+        "person_frames": 16,
+        "alerts": [
+          {
+            "clip_seconds": 8.416666666666666,
+            "text": "possible person, right",
+            "side": "right"
+          },
+          {
+            "clip_seconds": 13.208333333333334,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 17.208333333333332,
+            "text": "possible person, right",
+            "side": "right"
+          }
+        ],
+        "mean_detector_ms": 93.17701399850193,
+        "p95_detector_ms": 115.0919650113792,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "best_plain_v2",
+        "clip": "florence_rooftop_survivor.mp4",
+        "confidence": 0.15,
+        "frames": 60,
+        "person_frames": 40,
+        "alerts": [
+          {
+            "clip_seconds": 3.2083333333333335,
+            "text": "possible person, left",
+            "side": "left"
+          },
+          {
+            "clip_seconds": 7.208333333333333,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 12.833333333333334,
+            "text": "possible person, right",
+            "side": "right"
+          },
+          {
+            "clip_seconds": 17.208333333333332,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          }
+        ],
+        "mean_detector_ms": 100.34063166482763,
+        "p95_detector_ms": 115.66664998390476,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "best_plain_v2",
+        "clip": "harvey_night_flood_survivors.mp4",
+        "confidence": 0.15,
+        "frames": 43,
+        "person_frames": 38,
+        "alerts": [
+          {
+            "clip_seconds": 0.8333333333333334,
+            "text": "possible person, right",
+            "side": "right"
+          },
+          {
+            "clip_seconds": 4.833333333333333,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 9.208333333333334,
+            "text": "possible person, right",
+            "side": "right"
+          },
+          {
+            "clip_seconds": 13.208333333333334,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          }
+        ],
+        "mean_detector_ms": 98.31373487953854,
+        "p95_detector_ms": 117.23098999937065,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "best_plain_v2",
+        "clip": "aerial_harvey_distant_flood_group.mp4",
+        "confidence": 0.15,
+        "frames": 18,
+        "person_frames": 11,
+        "alerts": [
+          {
+            "clip_seconds": 0.4166666666666667,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 6.833333333333333,
+            "text": "possible person, left",
+            "side": "left"
+          }
+        ],
+        "mean_detector_ms": 101.27690555236768,
+        "p95_detector_ms": 118.4008299926063,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "best_plain_v2",
+        "clip": "aerial_harvey_rooftop_survivors.mp4",
+        "confidence": 0.15,
+        "frames": 40,
+        "person_frames": 37,
+        "alerts": [
+          {
+            "clip_seconds": 0.4166666666666667,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 10.416666666666666,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          }
+        ],
+        "mean_detector_ms": 101.75624000112293,
+        "p95_detector_ms": 120.67351500445503,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "best_plain_v2",
+        "clip": "lakewithrain_mock.mp4",
+        "confidence": 0.15,
+        "frames": 45,
+        "person_frames": 18,
+        "alerts": [
+          {
+            "clip_seconds": 3.2083333333333335,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 11.208333333333334,
+            "text": "possible person, left",
+            "side": "left"
+          },
+          {
+            "clip_seconds": 15.625,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          }
+        ],
+        "mean_detector_ms": 100.12396444281977,
+        "p95_detector_ms": 122.75955998338758,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "best_plain_v2",
+        "clip": "rainy_night_negative.mp4",
+        "confidence": 0.15,
+        "frames": 15,
+        "person_frames": 14,
+        "alerts": [
+          {
+            "clip_seconds": 0.4166666666666667,
+            "text": "possible person, left",
+            "side": "left"
+          }
+        ],
+        "mean_detector_ms": 114.16399999870919,
+        "p95_detector_ms": 123.06319999916013,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "best_storm_v2",
+        "clip": "rubble_survivor_extraction.mp4",
+        "confidence": 0.15,
+        "frames": 50,
+        "person_frames": 20,
+        "alerts": [
+          {
+            "clip_seconds": 11.208333333333334,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 16.0,
+            "text": "possible person, left",
+            "side": "left"
+          }
+        ],
+        "mean_detector_ms": 98.83795400208328,
+        "p95_detector_ms": 116.1433300076169,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "best_storm_v2",
+        "clip": "florence_rooftop_survivor.mp4",
+        "confidence": 0.15,
+        "frames": 60,
+        "person_frames": 45,
+        "alerts": [
+          {
+            "clip_seconds": 2.8333333333333335,
+            "text": "possible person, left",
+            "side": "left"
+          },
+          {
+            "clip_seconds": 6.833333333333333,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 10.833333333333334,
+            "text": "possible person, right",
+            "side": "right"
+          },
+          {
+            "clip_seconds": 16.0,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 20.0,
+            "text": "possible person, right",
+            "side": "right"
+          }
+        ],
+        "mean_detector_ms": 97.45456333475886,
+        "p95_detector_ms": 119.21187500847736,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "best_storm_v2",
+        "clip": "harvey_night_flood_survivors.mp4",
+        "confidence": 0.15,
+        "frames": 43,
+        "person_frames": 40,
+        "alerts": [
+          {
+            "clip_seconds": 0.4166666666666667,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 4.833333333333333,
+            "text": "possible person, right",
+            "side": "right"
+          },
+          {
+            "clip_seconds": 8.833333333333334,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          }
+        ],
+        "mean_detector_ms": 94.91361628102442,
+        "p95_detector_ms": 106.3173999893479,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "best_storm_v2",
+        "clip": "aerial_harvey_distant_flood_group.mp4",
+        "confidence": 0.15,
+        "frames": 18,
+        "person_frames": 17,
+        "alerts": [
+          {
+            "clip_seconds": 0.4166666666666667,
+            "text": "possible person, left",
+            "side": "left"
+          },
+          {
+            "clip_seconds": 4.416666666666667,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          }
+        ],
+        "mean_detector_ms": 102.17610555830308,
+        "p95_detector_ms": 122.34700499247991,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "best_storm_v2",
+        "clip": "aerial_harvey_rooftop_survivors.mp4",
+        "confidence": 0.15,
+        "frames": 40,
+        "person_frames": 36,
+        "alerts": [
+          {
+            "clip_seconds": 0.4166666666666667,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          },
+          {
+            "clip_seconds": 10.416666666666666,
+            "text": "possible person, ahead",
+            "side": "ahead"
+          }
+        ],
+        "mean_detector_ms": 96.3423574976332,
+        "p95_detector_ms": 116.99305999354691,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "best_storm_v2",
+        "clip": "lakewithrain_mock.mp4",
+        "confidence": 0.15,
+        "frames": 45,
+        "person_frames": 0,
+        "alerts": [],
+        "mean_detector_ms": 95.34555332955077,
+        "p95_detector_ms": 110.35381999681704,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      },
+      {
+        "model": "best_storm_v2",
+        "clip": "rainy_night_negative.mp4",
+        "confidence": 0.15,
+        "frames": 15,
+        "person_frames": 0,
+        "alerts": [],
+        "mean_detector_ms": 122.02407333534211,
+        "p95_detector_ms": 137.26411999959964,
+        "frames_over_1500ms": 0,
+        "adapter_contract_passed": true,
+        "expectations_scored": false
+      }
+    ],
+    "limitations": [
+      "No HTTP requests, phone, network timeout or speech were tested.",
+      "Inference counts/alerts are not person or survivor accuracy; target boxes and some intervals remain unfinalized.",
+      "No frame-skipping/network-delay simulation; each model/clip starts with fresh alert state.",
+      "Thresholds are provisional source-validation operating points, not production approval."
+    ]
+  },
+  "http_integration_checks": {
+    "scope": "isolated local real HTTP; not the team demo deployment or physical iOS/glasses",
+    "server_tests": {
+      "passed": 347,
+      "warnings": 1,
+      "ruff_check": "passed",
+      "ruff_format": "passed",
+      "mypy": "passed"
+    },
+    "evaluation_tests": {
+      "passed": 33
+    },
+    "rows": [
+      {
+        "created_utc": "2026-10-18T05:49:56.404267+00:00",
+        "model_file": "best_plain_v2.pt",
+        "model_sha256": "99ad8b2cd491c374804b19437b6c4b9a79b2302dfbb377e73b034017375dcfdf",
+        "requests": 6,
+        "passed": true,
+        "accuracy_scored": false,
+        "phone_speech_tested": false,
+        "tested_server_commit": "e4fd87355b05b06818a0190bea05727043364e34",
+        "server_url": "http://127.0.0.1:18081",
+        "health": {
+          "ready": true,
+          "detector": "best_plain_v2",
+          "device": "cpu",
+          "load_error": null,
+          "auth": "off",
+          "describe": "off",
+          "gemini_model": null,
+          "model_file": "best_plain_v2.pt",
+          "model_sha256": "99ad8b2cd491c374804b19437b6c4b9a79b2302dfbb377e73b034017375dcfdf",
+          "class_names": [
+            "person"
+          ],
+          "fallback": null,
+          "commit": null,
+          "fps": 0.0,
+          "server_ms_p50": null,
+          "server_ms_p95": null
+        },
+        "active_tuning": {
+          "conf_alert": 0.15,
+          "window": 3,
+          "needed": 2,
+          "cooldown_ms": 4000,
+          "same_side_repeat_ms": 10000,
+          "window_max_age_ms": 2000
+        },
+        "round_trip_ms_min": 117.35699998098426,
+        "round_trip_ms_max": 255.58560001081787,
+        "round_trip_ms_median": 192.93720000132453,
+        "frames_with_detections": 6,
+        "events_in_frame_replies": 1,
+        "active_conf_detect": 0.15,
+        "sample_sources": [
+          "aerial_harvey_rooftop_survivors at 2s",
+          "rainy_night_negative at 2s"
+        ],
+        "raw_artifact": "runs/mvp_http_plain/check.json"
+      },
+      {
+        "created_utc": "2026-10-18T05:53:08.967912+00:00",
+        "model_file": "best_storm_v2.pt",
+        "model_sha256": "f64d01bc6637b3a114b389881ff2fe4ecc24a603b0ccdb43ca6a07226e0c3163",
+        "requests": 6,
+        "passed": true,
+        "accuracy_scored": false,
+        "phone_speech_tested": false,
+        "tested_server_commit": "e4fd87355b05b06818a0190bea05727043364e34",
+        "server_url": "http://127.0.0.1:18082",
+        "health": {
+          "ready": true,
+          "detector": "best_storm_v2",
+          "device": "cpu",
+          "load_error": null,
+          "auth": "off",
+          "describe": "off",
+          "gemini_model": null,
+          "model_file": "best_storm_v2.pt",
+          "model_sha256": "f64d01bc6637b3a114b389881ff2fe4ecc24a603b0ccdb43ca6a07226e0c3163",
+          "class_names": [
+            "person"
+          ],
+          "fallback": null,
+          "commit": null,
+          "fps": 0.0,
+          "server_ms_p50": null,
+          "server_ms_p95": null
+        },
+        "active_tuning": {
+          "conf_alert": 0.15,
+          "window": 3,
+          "needed": 2,
+          "cooldown_ms": 4000,
+          "same_side_repeat_ms": 10000,
+          "window_max_age_ms": 2000
+        },
+        "round_trip_ms_min": 107.49090000172146,
+        "round_trip_ms_max": 204.32079999591224,
+        "round_trip_ms_median": 139.54999999259599,
+        "frames_with_detections": 3,
+        "events_in_frame_replies": 1,
+        "active_conf_detect": 0.15,
+        "sample_sources": [
+          "aerial_harvey_rooftop_survivors at 2s",
+          "rainy_night_negative at 2s"
+        ],
+        "raw_artifact": "runs/mvp_http_storm/check.json"
+      }
+    ],
+    "plain_video_replays": [
+      {
+        "model": "best_plain_v2",
+        "clip_role": "aerial",
+        "summary": "frames=17 errors=0 auth_errors=0 skipped=1  fps=2.56  server_ms p50=125 p95=265  round_trip_ms p50=130 p95=263",
+        "raw_artifact": "runs\\mvp_http_plain\\replay_aerial.log",
+        "accuracy_scored": false,
+        "alert_lines": [
+          "t=  2.42s  ALERT  possible person, ahead",
+          "t=  6.83s  ALERT  possible person, left"
+        ]
+      },
+      {
+        "model": "best_plain_v2",
+        "clip_role": "lake",
+        "summary": "frames=44 errors=0 auth_errors=0 skipped=1  fps=2.51  server_ms p50=140 p95=219  round_trip_ms p50=143 p95=240",
+        "raw_artifact": "runs\\mvp_http_plain\\replay_lake.log",
+        "accuracy_scored": false,
+        "alert_lines": [
+          "t=  3.21s  ALERT  possible person, ahead",
+          "t= 11.21s  ALERT  possible person, left",
+          "t= 15.62s  ALERT  possible person, ahead"
+        ]
+      },
+      {
+        "model": "best_plain_v2",
+        "clip_role": "negative",
+        "summary": "frames=14 errors=0 auth_errors=0 skipped=1  fps=2.54  server_ms p50=156 p95=265  round_trip_ms p50=162 p95=300",
+        "raw_artifact": "runs\\mvp_http_plain\\replay_negative.log",
+        "accuracy_scored": false,
+        "alert_lines": [
+          "t=  0.83s  ALERT  possible person, left"
+        ]
+      }
+    ],
+    "phone_speech_tested": false,
+    "gemini_enabled": false,
+    "deployment_changed": false,
+    "limitations": [
+      "Six-frame smoke tests are not a latency benchmark.",
+      "Replay has no approved survivor answer key; event counts are not accuracy.",
+      "One upload slot was skipped per replay.",
+      "Current app speaks descriptions only; Gemini was disabled in these local checks."
+    ]
+  },
+  "remaining": [
+    "C exact merged train/validation manifest and held-out exclusions",
+    "Near-duplicate/source-video split audit",
+    "Final acceptance against B deployed/demo server",
+    "iPhone/mock-camera HUD and Gemini-description speech loop with A",
+    "Final survivor-target clip annotations and source permissions where unknown"
+  ],
+  "deployment_approved": false,
+  "validation_provenance_verified": false
+}
