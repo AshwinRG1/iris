@@ -39,3 +39,7 @@ The detector identifies visible people. It does not distinguish rescuers from su
 | `docs/` | Results, footage credits, and handoff guides |
 
 Start with [dependencies.md](dependencies.md), the [evaluation commands](training/EVALUATION.md), and the [demo clip guide](docs/DEMO_CLIPS.md). Datasets, weights, demo videos, and large run artifacts are shared separately through the team's Drive, rather than Git.
+
+## Links
+Devpost: https://devpost.com/software/iris-ni0pdr
+Youtube Demo: https://www.youtube.com/watch?v=AVd83GBtmb0
