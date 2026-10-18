@@ -5,6 +5,9 @@ from typing import Literal
 
 Side = Literal["left", "ahead", "right"]
 
+# How long an event's description rides on /frame replies.
+SPOKEN_MS = 10_000
+
 
 @dataclass(frozen=True)
 class Box:

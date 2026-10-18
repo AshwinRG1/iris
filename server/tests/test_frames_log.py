@@ -76,6 +76,8 @@ def test_each_frame_appends_one_line_with_its_own_wall_clock_at(log_dir: Path) -
         "server_ms": 10,
         "detections": [{"label": "person", "conf": 0.71, "side": "left"}],
         "alert": None,
+        "description": None,
+        "description_id": None,
     }
     assert second["at"] == "2026-01-01T00:00:02+00:00"
     assert second["frame_id"] == 2
