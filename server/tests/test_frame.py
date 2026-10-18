@@ -66,8 +66,8 @@ def test_non_alert_label_is_dropped() -> None:
 
 
 def test_detection_below_conf_detect_is_dropped() -> None:
-    with _client(FakeDetector([[det(conf=0.14), det(conf=0.15)]])) as c:
-        assert [d["conf"] for d in _post(c)["detections"]] == [0.15]
+    with _client(FakeDetector([[det(conf=0.09), det(conf=0.10)]])) as c:
+        assert [d["conf"] for d in _post(c)["detections"]] == [0.10]
 
 
 def test_detection_runs_off_the_event_loop() -> None:
