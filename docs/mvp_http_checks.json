@@ -1,0 +1,157 @@
+{
+  "scope": "isolated local real HTTP; not the team demo deployment or physical iOS/glasses",
+  "server_tests": {
+    "passed": 347,
+    "warnings": 1,
+    "ruff_check": "passed",
+    "ruff_format": "passed",
+    "mypy": "passed"
+  },
+  "evaluation_tests": {
+    "passed": 33
+  },
+  "rows": [
+    {
+      "created_utc": "2026-10-18T05:49:56.404267+00:00",
+      "model_file": "best_plain_v2.pt",
+      "model_sha256": "99ad8b2cd491c374804b19437b6c4b9a79b2302dfbb377e73b034017375dcfdf",
+      "requests": 6,
+      "passed": true,
+      "accuracy_scored": false,
+      "phone_speech_tested": false,
+      "tested_server_commit": "e4fd87355b05b06818a0190bea05727043364e34",
+      "server_url": "http://127.0.0.1:18081",
+      "health": {
+        "ready": true,
+        "detector": "best_plain_v2",
+        "device": "cpu",
+        "load_error": null,
+        "auth": "off",
+        "describe": "off",
+        "gemini_model": null,
+        "model_file": "best_plain_v2.pt",
+        "model_sha256": "99ad8b2cd491c374804b19437b6c4b9a79b2302dfbb377e73b034017375dcfdf",
+        "class_names": [
+          "person"
+        ],
+        "fallback": null,
+        "commit": null,
+        "fps": 0.0,
+        "server_ms_p50": null,
+        "server_ms_p95": null
+      },
+      "active_tuning": {
+        "conf_alert": 0.15,
+        "window": 3,
+        "needed": 2,
+        "cooldown_ms": 4000,
+        "same_side_repeat_ms": 10000,
+        "window_max_age_ms": 2000
+      },
+      "round_trip_ms_min": 117.35699998098426,
+      "round_trip_ms_max": 255.58560001081787,
+      "round_trip_ms_median": 192.93720000132453,
+      "frames_with_detections": 6,
+      "events_in_frame_replies": 1,
+      "active_conf_detect": 0.15,
+      "sample_sources": [
+        "aerial_harvey_rooftop_survivors at 2s",
+        "rainy_night_negative at 2s"
+      ],
+      "raw_artifact": "runs/mvp_http_plain/check.json"
+    },
+    {
+      "created_utc": "2026-10-18T05:53:08.967912+00:00",
+      "model_file": "best_storm_v2.pt",
+      "model_sha256": "f64d01bc6637b3a114b389881ff2fe4ecc24a603b0ccdb43ca6a07226e0c3163",
+      "requests": 6,
+      "passed": true,
+      "accuracy_scored": false,
+      "phone_speech_tested": false,
+      "tested_server_commit": "e4fd87355b05b06818a0190bea05727043364e34",
+      "server_url": "http://127.0.0.1:18082",
+      "health": {
+        "ready": true,
+        "detector": "best_storm_v2",
+        "device": "cpu",
+        "load_error": null,
+        "auth": "off",
+        "describe": "off",
+        "gemini_model": null,
+        "model_file": "best_storm_v2.pt",
+        "model_sha256": "f64d01bc6637b3a114b389881ff2fe4ecc24a603b0ccdb43ca6a07226e0c3163",
+        "class_names": [
+          "person"
+        ],
+        "fallback": null,
+        "commit": null,
+        "fps": 0.0,
+        "server_ms_p50": null,
+        "server_ms_p95": null
+      },
+      "active_tuning": {
+        "conf_alert": 0.15,
+        "window": 3,
+        "needed": 2,
+        "cooldown_ms": 4000,
+        "same_side_repeat_ms": 10000,
+        "window_max_age_ms": 2000
+      },
+      "round_trip_ms_min": 107.49090000172146,
+      "round_trip_ms_max": 204.32079999591224,
+      "round_trip_ms_median": 139.54999999259599,
+      "frames_with_detections": 3,
+      "events_in_frame_replies": 1,
+      "active_conf_detect": 0.15,
+      "sample_sources": [
+        "aerial_harvey_rooftop_survivors at 2s",
+        "rainy_night_negative at 2s"
+      ],
+      "raw_artifact": "runs/mvp_http_storm/check.json"
+    }
+  ],
+  "plain_video_replays": [
+    {
+      "model": "best_plain_v2",
+      "clip_role": "aerial",
+      "summary": "frames=17 errors=0 auth_errors=0 skipped=1  fps=2.56  server_ms p50=125 p95=265  round_trip_ms p50=130 p95=263",
+      "raw_artifact": "runs\\mvp_http_plain\\replay_aerial.log",
+      "accuracy_scored": false,
+      "alert_lines": [
+        "t=  2.42s  ALERT  possible person, ahead",
+        "t=  6.83s  ALERT  possible person, left"
+      ]
+    },
+    {
+      "model": "best_plain_v2",
+      "clip_role": "lake",
+      "summary": "frames=44 errors=0 auth_errors=0 skipped=1  fps=2.51  server_ms p50=140 p95=219  round_trip_ms p50=143 p95=240",
+      "raw_artifact": "runs\\mvp_http_plain\\replay_lake.log",
+      "accuracy_scored": false,
+      "alert_lines": [
+        "t=  3.21s  ALERT  possible person, ahead",
+        "t= 11.21s  ALERT  possible person, left",
+        "t= 15.62s  ALERT  possible person, ahead"
+      ]
+    },
+    {
+      "model": "best_plain_v2",
+      "clip_role": "negative",
+      "summary": "frames=14 errors=0 auth_errors=0 skipped=1  fps=2.54  server_ms p50=156 p95=265  round_trip_ms p50=162 p95=300",
+      "raw_artifact": "runs\\mvp_http_plain\\replay_negative.log",
+      "accuracy_scored": false,
+      "alert_lines": [
+        "t=  0.83s  ALERT  possible person, left"
+      ]
+    }
+  ],
+  "phone_speech_tested": false,
+  "gemini_enabled": false,
+  "deployment_changed": false,
+  "limitations": [
+    "Six-frame smoke tests are not a latency benchmark.",
+    "Replay has no approved survivor answer key; event counts are not accuracy.",
+    "One upload slot was skipped per replay.",
+    "Current app speaks descriptions only; Gemini was disabled in these local checks."
+  ]
+}

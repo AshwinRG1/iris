@@ -1,0 +1,2319 @@
+{
+  "purpose": "Development diagnostic; source-export validation folders, not verified C validation. No test images used.",
+  "images": 1807,
+  "gt_boxes": 9365,
+  "source_images": {
+    "rubble": 905,
+    "flood1": 501,
+    "flood2": 401
+  },
+  "source_class_boxes": {
+    "rubble:Person": 6387,
+    "rubble:Person in Rubble": 599,
+    "flood1:Person in water": 1027,
+    "flood1:Person drowning": 189,
+    "flood1:Person out of water": 141,
+    "flood2:drowning": 391,
+    "flood2:in-car": 142,
+    "flood2:person": 489
+  },
+  "settings": {
+    "imgsz": 640,
+    "rect": false,
+    "batch": 1,
+    "device": "cpu",
+    "half": false,
+    "augment": false,
+    "candidate_conf": 0.001,
+    "nms_iou": 0.7,
+    "max_det": 300,
+    "thresholds": [
+      0.05,
+      0.1,
+      0.15,
+      0.25,
+      0.35,
+      0.5
+    ],
+    "threads": 8,
+    "ultralytics": "8.4.178",
+    "torch": "2.14.1+cpu"
+  },
+  "matching": "IoU >= 0.5, one-to-one greedy matching in descending prediction confidence. Unmatched predictions with >=50% prediction area inside rubble ignored-region boxes are excluded.",
+  "size_bins": "GT area after aspect-preserving scaling longest side to 640: small <32^2, medium <96^2, large otherwise. Recall bins only, not COCO AP.",
+  "limitations": [
+    "No verified provenance for C merged train/val; these originals may have been seen during training.",
+    "Excluded exact test and validation duplicates; near-duplicate, source-video grouping, and train-overlap audits not completed.",
+    "Original human-class mapping follows prior repair; in-car annotation semantics need review.",
+    "Unknown weather/occlusion conditions are not inferred from class names.",
+    "Unmatched predictions are annotation-relative candidates, not independently reviewed false positives.",
+    "Size/class subgroup precision is not meaningful because unmatched predictions cannot be assigned to a GT subgroup.",
+    "Not a deployed alert, clinical, survivor-status, or full video performance test."
+  ],
+  "models": {
+    "yolo26s": {
+      "model": "yolo26s.pt",
+      "sha256": "646f8bc3fe0a656803d95c294f7852321748cb29d13466a1af8862e2db384a1b",
+      "parameters": 10009784,
+      "base_model": "yolo26s-objv1-150.pt",
+      "overall": {
+        "0.05": {
+          "tp": 3354,
+          "fp": 4361,
+          "fn": 6011,
+          "precision": 0.43473752430330526,
+          "recall": 0.3581420181526962,
+          "f2": 0.3712230215827338,
+          "ignored_predictions": 52
+        },
+        "0.1": {
+          "tp": 2773,
+          "fp": 2138,
+          "fn": 6592,
+          "precision": 0.5646507839543881,
+          "recall": 0.2961025093432995,
+          "f2": 0.32722852894668525,
+          "ignored_predictions": 17
+        },
+        "0.15": {
+          "tp": 2416,
+          "fp": 1330,
+          "fn": 6949,
+          "precision": 0.6449546182594768,
+          "recall": 0.2579818473037907,
+          "f2": 0.293161190117944,
+          "ignored_predictions": 7
+        },
+        "0.25": {
+          "tp": 1900,
+          "fp": 621,
+          "fn": 7465,
+          "precision": 0.753669178897263,
+          "recall": 0.20288307528029897,
+          "f2": 0.23761286611140295,
+          "ignored_predictions": 3
+        },
+        "0.35": {
+          "tp": 1528,
+          "fp": 326,
+          "fn": 7837,
+          "precision": 0.8241639697950378,
+          "recall": 0.1631607047517352,
+          "f2": 0.1943328076512184,
+          "ignored_predictions": 2
+        },
+        "0.5": {
+          "tp": 1062,
+          "fp": 123,
+          "fn": 8303,
+          "precision": 0.8962025316455696,
+          "recall": 0.11340096102509344,
+          "f2": 0.13740458015267176,
+          "ignored_predictions": 2
+        }
+      },
+      "groups": {
+        "0.05": {
+          "class:flood1:Person drowning": {
+            "tp": 50,
+            "fp": null,
+            "fn": 139,
+            "precision": null,
+            "recall": 0.26455026455026454,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 338,
+            "fp": null,
+            "fn": 689,
+            "precision": null,
+            "recall": 0.3291139240506329,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 25,
+            "fp": null,
+            "fn": 116,
+            "precision": null,
+            "recall": 0.1773049645390071,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 107,
+            "fp": null,
+            "fn": 284,
+            "precision": null,
+            "recall": 0.27365728900255754,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 39,
+            "fp": null,
+            "fn": 103,
+            "precision": null,
+            "recall": 0.2746478873239437,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 135,
+            "fp": null,
+            "fn": 354,
+            "precision": null,
+            "recall": 0.27607361963190186,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 2214,
+            "fp": null,
+            "fn": 4173,
+            "precision": null,
+            "recall": 0.3466416157820573,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 446,
+            "fp": null,
+            "fn": 153,
+            "precision": null,
+            "recall": 0.7445742904841403,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 855,
+            "fp": null,
+            "fn": 590,
+            "precision": null,
+            "recall": 0.5916955017301038,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 400,
+            "fp": null,
+            "fn": 764,
+            "precision": null,
+            "recall": 0.3436426116838488,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 2099,
+            "fp": null,
+            "fn": 4657,
+            "precision": null,
+            "recall": 0.31068679692125517,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 413,
+            "fp": 1322,
+            "fn": 944,
+            "precision": 0.23804034582132566,
+            "recall": 0.30434782608695654,
+            "f2": 0.2882870305737819
+          },
+          "source:flood2": {
+            "tp": 281,
+            "fp": 581,
+            "fn": 741,
+            "precision": 0.3259860788863109,
+            "recall": 0.27495107632093935,
+            "f2": 0.28383838383838383
+          },
+          "source:rubble": {
+            "tp": 2660,
+            "fp": 2458,
+            "fn": 4326,
+            "precision": 0.5197342711996874,
+            "recall": 0.3807615230460922,
+            "f2": 0.4022745145484241
+          }
+        },
+        "0.1": {
+          "class:flood1:Person drowning": {
+            "tp": 29,
+            "fp": null,
+            "fn": 160,
+            "precision": null,
+            "recall": 0.15343915343915343,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 267,
+            "fp": null,
+            "fn": 760,
+            "precision": null,
+            "recall": 0.2599805258033106,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 12,
+            "fp": null,
+            "fn": 129,
+            "precision": null,
+            "recall": 0.0851063829787234,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 93,
+            "fp": null,
+            "fn": 298,
+            "precision": null,
+            "recall": 0.23785166240409208,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 32,
+            "fp": null,
+            "fn": 110,
+            "precision": null,
+            "recall": 0.22535211267605634,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 108,
+            "fp": null,
+            "fn": 381,
+            "precision": null,
+            "recall": 0.22085889570552147,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 1804,
+            "fp": null,
+            "fn": 4583,
+            "precision": null,
+            "recall": 0.2824487239705652,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 428,
+            "fp": null,
+            "fn": 171,
+            "precision": null,
+            "recall": 0.7145242070116862,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 769,
+            "fp": null,
+            "fn": 676,
+            "precision": null,
+            "recall": 0.5321799307958478,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 329,
+            "fp": null,
+            "fn": 835,
+            "precision": null,
+            "recall": 0.28264604810996563,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 1675,
+            "fp": null,
+            "fn": 5081,
+            "precision": null,
+            "recall": 0.24792776791000593,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 308,
+            "fp": 682,
+            "fn": 1049,
+            "precision": 0.3111111111111111,
+            "recall": 0.22697126013264554,
+            "f2": 0.23995014023060146
+          },
+          "source:flood2": {
+            "tp": 233,
+            "fp": 280,
+            "fn": 789,
+            "precision": 0.45419103313840153,
+            "recall": 0.22798434442270057,
+            "f2": 0.25320582482069115
+          },
+          "source:rubble": {
+            "tp": 2232,
+            "fp": 1176,
+            "fn": 4754,
+            "precision": 0.6549295774647887,
+            "recall": 0.31949613512739766,
+            "f2": 0.35595815258994645
+          }
+        },
+        "0.15": {
+          "class:flood1:Person drowning": {
+            "tp": 25,
+            "fp": null,
+            "fn": 164,
+            "precision": null,
+            "recall": 0.13227513227513227,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 234,
+            "fp": null,
+            "fn": 793,
+            "precision": null,
+            "recall": 0.22784810126582278,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 8,
+            "fp": null,
+            "fn": 133,
+            "precision": null,
+            "recall": 0.05673758865248227,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 87,
+            "fp": null,
+            "fn": 304,
+            "precision": null,
+            "recall": 0.22250639386189258,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 31,
+            "fp": null,
+            "fn": 111,
+            "precision": null,
+            "recall": 0.21830985915492956,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 91,
+            "fp": null,
+            "fn": 398,
+            "precision": null,
+            "recall": 0.18609406952965235,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 1525,
+            "fp": null,
+            "fn": 4862,
+            "precision": null,
+            "recall": 0.2387662439329889,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 415,
+            "fp": null,
+            "fn": 184,
+            "precision": null,
+            "recall": 0.6928213689482471,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 731,
+            "fp": null,
+            "fn": 714,
+            "precision": null,
+            "recall": 0.5058823529411764,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 289,
+            "fp": null,
+            "fn": 875,
+            "precision": null,
+            "recall": 0.24828178694158076,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 1396,
+            "fp": null,
+            "fn": 5360,
+            "precision": null,
+            "recall": 0.20663114268798105,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 267,
+            "fp": 445,
+            "fn": 1090,
+            "precision": 0.375,
+            "recall": 0.1967575534266765,
+            "f2": 0.21742671009771988
+          },
+          "source:flood2": {
+            "tp": 209,
+            "fp": 175,
+            "fn": 813,
+            "precision": 0.5442708333333334,
+            "recall": 0.2045009784735812,
+            "f2": 0.2336762075134168
+          },
+          "source:rubble": {
+            "tp": 1940,
+            "fp": 710,
+            "fn": 5046,
+            "precision": 0.7320754716981132,
+            "recall": 0.27769825365015743,
+            "f2": 0.3170556318232333
+          }
+        },
+        "0.25": {
+          "class:flood1:Person drowning": {
+            "tp": 17,
+            "fp": null,
+            "fn": 172,
+            "precision": null,
+            "recall": 0.08994708994708994,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 176,
+            "fp": null,
+            "fn": 851,
+            "precision": null,
+            "recall": 0.17137293086660174,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 6,
+            "fp": null,
+            "fn": 135,
+            "precision": null,
+            "recall": 0.0425531914893617,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 73,
+            "fp": null,
+            "fn": 318,
+            "precision": null,
+            "recall": 0.1867007672634271,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 28,
+            "fp": null,
+            "fn": 114,
+            "precision": null,
+            "recall": 0.19718309859154928,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 72,
+            "fp": null,
+            "fn": 417,
+            "precision": null,
+            "recall": 0.147239263803681,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 1145,
+            "fp": null,
+            "fn": 5242,
+            "precision": null,
+            "recall": 0.1792703929857523,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 383,
+            "fp": null,
+            "fn": 216,
+            "precision": null,
+            "recall": 0.6393989983305509,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 638,
+            "fp": null,
+            "fn": 807,
+            "precision": null,
+            "recall": 0.44152249134948096,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 243,
+            "fp": null,
+            "fn": 921,
+            "precision": null,
+            "recall": 0.20876288659793815,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 1019,
+            "fp": null,
+            "fn": 5737,
+            "precision": null,
+            "recall": 0.15082889283599762,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 199,
+            "fp": 232,
+            "fn": 1158,
+            "precision": 0.4617169373549884,
+            "recall": 0.1466470154753132,
+            "f2": 0.1698242020822666
+          },
+          "source:flood2": {
+            "tp": 173,
+            "fp": 93,
+            "fn": 849,
+            "precision": 0.650375939849624,
+            "recall": 0.16927592954990214,
+            "f2": 0.1986678915939366
+          },
+          "source:rubble": {
+            "tp": 1528,
+            "fp": 296,
+            "fn": 5458,
+            "precision": 0.8377192982456141,
+            "recall": 0.21872316060692815,
+            "f2": 0.2566514377855415
+          }
+        },
+        "0.35": {
+          "class:flood1:Person drowning": {
+            "tp": 9,
+            "fp": null,
+            "fn": 180,
+            "precision": null,
+            "recall": 0.047619047619047616,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 125,
+            "fp": null,
+            "fn": 902,
+            "precision": null,
+            "recall": 0.12171372930866602,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 4,
+            "fp": null,
+            "fn": 137,
+            "precision": null,
+            "recall": 0.028368794326241134,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 64,
+            "fp": null,
+            "fn": 327,
+            "precision": null,
+            "recall": 0.1636828644501279,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 24,
+            "fp": null,
+            "fn": 118,
+            "precision": null,
+            "recall": 0.16901408450704225,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 57,
+            "fp": null,
+            "fn": 432,
+            "precision": null,
+            "recall": 0.1165644171779141,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 880,
+            "fp": null,
+            "fn": 5507,
+            "precision": null,
+            "recall": 0.13777986535149522,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 365,
+            "fp": null,
+            "fn": 234,
+            "precision": null,
+            "recall": 0.6093489148580968,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 567,
+            "fp": null,
+            "fn": 878,
+            "precision": null,
+            "recall": 0.3923875432525952,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 209,
+            "fp": null,
+            "fn": 955,
+            "precision": null,
+            "recall": 0.179553264604811,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 752,
+            "fp": null,
+            "fn": 6004,
+            "precision": null,
+            "recall": 0.11130846654825341,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 138,
+            "fp": 126,
+            "fn": 1219,
+            "precision": 0.5227272727272727,
+            "recall": 0.1016949152542373,
+            "f2": 0.12122276879831341
+          },
+          "source:flood2": {
+            "tp": 145,
+            "fp": 61,
+            "fn": 877,
+            "precision": 0.7038834951456311,
+            "recall": 0.14187866927592954,
+            "f2": 0.1688402421984164
+          },
+          "source:rubble": {
+            "tp": 1245,
+            "fp": 139,
+            "fn": 5741,
+            "precision": 0.8995664739884393,
+            "recall": 0.17821356999713714,
+            "f2": 0.21225450081833067
+          }
+        },
+        "0.5": {
+          "class:flood1:Person drowning": {
+            "tp": 6,
+            "fp": null,
+            "fn": 183,
+            "precision": null,
+            "recall": 0.031746031746031744,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 73,
+            "fp": null,
+            "fn": 954,
+            "precision": null,
+            "recall": 0.07108081791626096,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 141,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 50,
+            "fp": null,
+            "fn": 341,
+            "precision": null,
+            "recall": 0.1278772378516624,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 16,
+            "fp": null,
+            "fn": 126,
+            "precision": null,
+            "recall": 0.11267605633802817,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 40,
+            "fp": null,
+            "fn": 449,
+            "precision": null,
+            "recall": 0.081799591002045,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 550,
+            "fp": null,
+            "fn": 5837,
+            "precision": null,
+            "recall": 0.08611241584468451,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 327,
+            "fp": null,
+            "fn": 272,
+            "precision": null,
+            "recall": 0.5459098497495827,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 473,
+            "fp": null,
+            "fn": 972,
+            "precision": null,
+            "recall": 0.3273356401384083,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 160,
+            "fp": null,
+            "fn": 1004,
+            "precision": null,
+            "recall": 0.13745704467353953,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 429,
+            "fp": null,
+            "fn": 6327,
+            "precision": null,
+            "recall": 0.06349911190053285,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 79,
+            "fp": 52,
+            "fn": 1278,
+            "precision": 0.6030534351145038,
+            "recall": 0.05821665438467207,
+            "f2": 0.07105594531390537
+          },
+          "source:flood2": {
+            "tp": 106,
+            "fp": 35,
+            "fn": 916,
+            "precision": 0.75177304964539,
+            "recall": 0.10371819960861056,
+            "f2": 0.12532513596594938
+          },
+          "source:rubble": {
+            "tp": 877,
+            "fp": 36,
+            "fn": 6109,
+            "precision": 0.9605695509309967,
+            "recall": 0.12553678786143715,
+            "f2": 0.15195619780295944
+          }
+        }
+      },
+      "mean_inference_ms": 112.0109429995706
+    },
+    "best_plain": {
+      "model": "server/weights/best_plain.pt",
+      "sha256": "79f86229223766484a42687eaf8fbca1b7b0701930e1fe3c0be9196d41b95bcf",
+      "parameters": 9428179,
+      "base_model": "yolo11s.pt",
+      "overall": {
+        "0.05": {
+          "tp": 118,
+          "fp": 647,
+          "fn": 9247,
+          "precision": 0.1542483660130719,
+          "recall": 0.012600106780565936,
+          "f2": 0.015434924787442773,
+          "ignored_predictions": 0
+        },
+        "0.1": {
+          "tp": 78,
+          "fp": 270,
+          "fn": 9287,
+          "precision": 0.22413793103448276,
+          "recall": 0.008328884143085958,
+          "f2": 0.010315277190012694,
+          "ignored_predictions": 0
+        },
+        "0.15": {
+          "tp": 66,
+          "fp": 149,
+          "fn": 9299,
+          "precision": 0.30697674418604654,
+          "recall": 0.007047517351841965,
+          "f2": 0.00875912408759124,
+          "ignored_predictions": 0
+        },
+        "0.25": {
+          "tp": 52,
+          "fp": 81,
+          "fn": 9313,
+          "precision": 0.39097744360902253,
+          "recall": 0.005552589428723972,
+          "f2": 0.006916181203947542,
+          "ignored_predictions": 0
+        },
+        "0.35": {
+          "tp": 39,
+          "fp": 47,
+          "fn": 9326,
+          "precision": 0.45348837209302323,
+          "recall": 0.004164442071542979,
+          "f2": 0.00519362914824482,
+          "ignored_predictions": 0
+        },
+        "0.5": {
+          "tp": 30,
+          "fp": 19,
+          "fn": 9335,
+          "precision": 0.6122448979591837,
+          "recall": 0.003203416978109984,
+          "f2": 0.003999040230344718,
+          "ignored_predictions": 0
+        }
+      },
+      "groups": {
+        "0.05": {
+          "class:flood1:Person drowning": {
+            "tp": 0,
+            "fp": null,
+            "fn": 189,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 1027,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 141,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 6,
+            "fp": null,
+            "fn": 385,
+            "precision": null,
+            "recall": 0.015345268542199489,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 0,
+            "fp": null,
+            "fn": 142,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 111,
+            "fp": null,
+            "fn": 378,
+            "precision": null,
+            "recall": 0.22699386503067484,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 1,
+            "fp": null,
+            "fn": 6386,
+            "precision": null,
+            "recall": 0.0001565680288085173,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 0,
+            "fp": null,
+            "fn": 599,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 52,
+            "fp": null,
+            "fn": 1393,
+            "precision": null,
+            "recall": 0.035986159169550176,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 52,
+            "fp": null,
+            "fn": 1112,
+            "precision": null,
+            "recall": 0.044673539518900345,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 14,
+            "fp": null,
+            "fn": 6742,
+            "precision": null,
+            "recall": 0.0020722320899940793,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 1357,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          },
+          "source:flood2": {
+            "tp": 117,
+            "fp": 644,
+            "fn": 905,
+            "precision": 0.15374507227332457,
+            "recall": 0.11448140900195694,
+            "f2": 0.12064343163538874
+          },
+          "source:rubble": {
+            "tp": 1,
+            "fp": 3,
+            "fn": 6985,
+            "precision": 0.25,
+            "recall": 0.000143143429716576,
+            "f2": 0.000178903678259625
+          }
+        },
+        "0.1": {
+          "class:flood1:Person drowning": {
+            "tp": 0,
+            "fp": null,
+            "fn": 189,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 1027,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 141,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 2,
+            "fp": null,
+            "fn": 389,
+            "precision": null,
+            "recall": 0.005115089514066497,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 0,
+            "fp": null,
+            "fn": 142,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 75,
+            "fp": null,
+            "fn": 414,
+            "precision": null,
+            "recall": 0.15337423312883436,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 1,
+            "fp": null,
+            "fn": 6386,
+            "precision": null,
+            "recall": 0.0001565680288085173,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 0,
+            "fp": null,
+            "fn": 599,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 38,
+            "fp": null,
+            "fn": 1407,
+            "precision": null,
+            "recall": 0.02629757785467128,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 31,
+            "fp": null,
+            "fn": 1133,
+            "precision": null,
+            "recall": 0.02663230240549828,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 9,
+            "fp": null,
+            "fn": 6747,
+            "precision": null,
+            "recall": 0.0013321492007104796,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 1357,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          },
+          "source:flood2": {
+            "tp": 77,
+            "fp": 269,
+            "fn": 945,
+            "precision": 0.22254335260115607,
+            "recall": 0.07534246575342465,
+            "f2": 0.08682904826341904
+          },
+          "source:rubble": {
+            "tp": 1,
+            "fp": 1,
+            "fn": 6985,
+            "precision": 0.5,
+            "recall": 0.000143143429716576,
+            "f2": 0.00017891648178630214
+          }
+        },
+        "0.15": {
+          "class:flood1:Person drowning": {
+            "tp": 0,
+            "fp": null,
+            "fn": 189,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 1027,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 141,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 2,
+            "fp": null,
+            "fn": 389,
+            "precision": null,
+            "recall": 0.005115089514066497,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 0,
+            "fp": null,
+            "fn": 142,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 64,
+            "fp": null,
+            "fn": 425,
+            "precision": null,
+            "recall": 0.130879345603272,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 0,
+            "fp": null,
+            "fn": 6387,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 0,
+            "fp": null,
+            "fn": 599,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 35,
+            "fp": null,
+            "fn": 1410,
+            "precision": null,
+            "recall": 0.02422145328719723,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 25,
+            "fp": null,
+            "fn": 1139,
+            "precision": null,
+            "recall": 0.02147766323024055,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 6,
+            "fp": null,
+            "fn": 6750,
+            "precision": null,
+            "recall": 0.0008880994671403197,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 1357,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          },
+          "source:flood2": {
+            "tp": 66,
+            "fp": 148,
+            "fn": 956,
+            "precision": 0.308411214953271,
+            "recall": 0.06457925636007827,
+            "f2": 0.07670850767085076
+          },
+          "source:rubble": {
+            "tp": 0,
+            "fp": 1,
+            "fn": 6986,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          }
+        },
+        "0.25": {
+          "class:flood1:Person drowning": {
+            "tp": 0,
+            "fp": null,
+            "fn": 189,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 1027,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 141,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 2,
+            "fp": null,
+            "fn": 389,
+            "precision": null,
+            "recall": 0.005115089514066497,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 0,
+            "fp": null,
+            "fn": 142,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 50,
+            "fp": null,
+            "fn": 439,
+            "precision": null,
+            "recall": 0.10224948875255624,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 0,
+            "fp": null,
+            "fn": 6387,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 0,
+            "fp": null,
+            "fn": 599,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 28,
+            "fp": null,
+            "fn": 1417,
+            "precision": null,
+            "recall": 0.019377162629757784,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 20,
+            "fp": null,
+            "fn": 1144,
+            "precision": null,
+            "recall": 0.01718213058419244,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 4,
+            "fp": null,
+            "fn": 6752,
+            "precision": null,
+            "recall": 0.0005920663114268798,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 1357,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          },
+          "source:flood2": {
+            "tp": 52,
+            "fp": 81,
+            "fn": 970,
+            "precision": 0.39097744360902253,
+            "recall": 0.050880626223091974,
+            "f2": 0.061596778014688464
+          },
+          "source:rubble": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 6986,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          }
+        },
+        "0.35": {
+          "class:flood1:Person drowning": {
+            "tp": 0,
+            "fp": null,
+            "fn": 189,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 1027,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 141,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 0,
+            "fp": null,
+            "fn": 391,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 0,
+            "fp": null,
+            "fn": 142,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 39,
+            "fp": null,
+            "fn": 450,
+            "precision": null,
+            "recall": 0.07975460122699386,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 0,
+            "fp": null,
+            "fn": 6387,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 0,
+            "fp": null,
+            "fn": 599,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 24,
+            "fp": null,
+            "fn": 1421,
+            "precision": null,
+            "recall": 0.01660899653979239,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 12,
+            "fp": null,
+            "fn": 1152,
+            "precision": null,
+            "recall": 0.010309278350515464,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 3,
+            "fp": null,
+            "fn": 6753,
+            "precision": null,
+            "recall": 0.0004440497335701599,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 1357,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          },
+          "source:flood2": {
+            "tp": 39,
+            "fp": 47,
+            "fn": 983,
+            "precision": 0.45348837209302323,
+            "recall": 0.03816046966731898,
+            "f2": 0.046717776712985146
+          },
+          "source:rubble": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 6986,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          }
+        },
+        "0.5": {
+          "class:flood1:Person drowning": {
+            "tp": 0,
+            "fp": null,
+            "fn": 189,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 1027,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 141,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 0,
+            "fp": null,
+            "fn": 391,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 0,
+            "fp": null,
+            "fn": 142,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 30,
+            "fp": null,
+            "fn": 459,
+            "precision": null,
+            "recall": 0.06134969325153374,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 0,
+            "fp": null,
+            "fn": 6387,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 0,
+            "fp": null,
+            "fn": 599,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 19,
+            "fp": null,
+            "fn": 1426,
+            "precision": null,
+            "recall": 0.01314878892733564,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 9,
+            "fp": null,
+            "fn": 1155,
+            "precision": null,
+            "recall": 0.007731958762886598,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 2,
+            "fp": null,
+            "fn": 6754,
+            "precision": null,
+            "recall": 0.0002960331557134399,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 1357,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          },
+          "source:flood2": {
+            "tp": 30,
+            "fp": 19,
+            "fn": 992,
+            "precision": 0.6122448979591837,
+            "recall": 0.029354207436399216,
+            "f2": 0.03625815808556925
+          },
+          "source:rubble": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 6986,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          }
+        }
+      },
+      "mean_inference_ms": 135.9739929717353
+    },
+    "best_storm": {
+      "model": "server/weights/best_storm.pt",
+      "sha256": "bb1968b10462ff0a4913a36933cecb98cd6e6372ba5cb7f235cd133f32ed59fd",
+      "parameters": 9428179,
+      "base_model": "yolo11s.pt",
+      "overall": {
+        "0.05": {
+          "tp": 179,
+          "fp": 1404,
+          "fn": 9186,
+          "precision": 0.11307643714466203,
+          "recall": 0.019113721302722906,
+          "f2": 0.02292344338293676,
+          "ignored_predictions": 0
+        },
+        "0.1": {
+          "tp": 140,
+          "fp": 546,
+          "fn": 9225,
+          "precision": 0.20408163265306123,
+          "recall": 0.014949279231179925,
+          "f2": 0.018350547894930007,
+          "ignored_predictions": 0
+        },
+        "0.15": {
+          "tp": 116,
+          "fp": 287,
+          "fn": 9249,
+          "precision": 0.2878411910669975,
+          "recall": 0.012386545648691938,
+          "f2": 0.015318384702744102,
+          "ignored_predictions": 0
+        },
+        "0.25": {
+          "tp": 99,
+          "fp": 131,
+          "fn": 9266,
+          "precision": 0.43043478260869567,
+          "recall": 0.010571276027762947,
+          "f2": 0.013133457150437783,
+          "ignored_predictions": 0
+        },
+        "0.35": {
+          "tp": 80,
+          "fp": 67,
+          "fn": 9285,
+          "precision": 0.54421768707483,
+          "recall": 0.008542445274959957,
+          "f2": 0.010636317706809902,
+          "ignored_predictions": 0
+        },
+        "0.5": {
+          "tp": 57,
+          "fp": 30,
+          "fn": 9308,
+          "precision": 0.6551724137931034,
+          "recall": 0.006086492258408969,
+          "f2": 0.007590486590140356,
+          "ignored_predictions": 0
+        }
+      },
+      "groups": {
+        "0.05": {
+          "class:flood1:Person drowning": {
+            "tp": 0,
+            "fp": null,
+            "fn": 189,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 1027,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 141,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 11,
+            "fp": null,
+            "fn": 380,
+            "precision": null,
+            "recall": 0.028132992327365727,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 2,
+            "fp": null,
+            "fn": 140,
+            "precision": null,
+            "recall": 0.014084507042253521,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 163,
+            "fp": null,
+            "fn": 326,
+            "precision": null,
+            "recall": 0.3333333333333333,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 3,
+            "fp": null,
+            "fn": 6384,
+            "precision": null,
+            "recall": 0.0004697040864255519,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 0,
+            "fp": null,
+            "fn": 599,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 66,
+            "fp": null,
+            "fn": 1379,
+            "precision": null,
+            "recall": 0.045674740484429065,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 97,
+            "fp": null,
+            "fn": 1067,
+            "precision": null,
+            "recall": 0.08333333333333333,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 16,
+            "fp": null,
+            "fn": 6740,
+            "precision": null,
+            "recall": 0.002368265245707519,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 1357,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          },
+          "source:flood2": {
+            "tp": 176,
+            "fp": 1389,
+            "fn": 846,
+            "precision": 0.11246006389776358,
+            "recall": 0.17221135029354206,
+            "f2": 0.15566955598797097
+          },
+          "source:rubble": {
+            "tp": 3,
+            "fp": 15,
+            "fn": 6983,
+            "precision": 0.16666666666666666,
+            "recall": 0.00042943028914972805,
+            "f2": 0.0005364423145697733
+          }
+        },
+        "0.1": {
+          "class:flood1:Person drowning": {
+            "tp": 0,
+            "fp": null,
+            "fn": 189,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 1027,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 141,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 7,
+            "fp": null,
+            "fn": 384,
+            "precision": null,
+            "recall": 0.017902813299232736,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 1,
+            "fp": null,
+            "fn": 141,
+            "precision": null,
+            "recall": 0.007042253521126761,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 131,
+            "fp": null,
+            "fn": 358,
+            "precision": null,
+            "recall": 0.26789366053169733,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 1,
+            "fp": null,
+            "fn": 6386,
+            "precision": null,
+            "recall": 0.0001565680288085173,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 0,
+            "fp": null,
+            "fn": 599,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 59,
+            "fp": null,
+            "fn": 1386,
+            "precision": null,
+            "recall": 0.04083044982698962,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 70,
+            "fp": null,
+            "fn": 1094,
+            "precision": null,
+            "recall": 0.06013745704467354,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 11,
+            "fp": null,
+            "fn": 6745,
+            "precision": null,
+            "recall": 0.0016281823564239194,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 1357,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          },
+          "source:flood2": {
+            "tp": 139,
+            "fp": 539,
+            "fn": 883,
+            "precision": 0.20501474926253688,
+            "recall": 0.1360078277886497,
+            "f2": 0.14582459085186739
+          },
+          "source:rubble": {
+            "tp": 1,
+            "fp": 7,
+            "fn": 6985,
+            "precision": 0.125,
+            "recall": 0.000143143429716576,
+            "f2": 0.0001788780767029193
+          }
+        },
+        "0.15": {
+          "class:flood1:Person drowning": {
+            "tp": 0,
+            "fp": null,
+            "fn": 189,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 1027,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 141,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 5,
+            "fp": null,
+            "fn": 386,
+            "precision": null,
+            "recall": 0.01278772378516624,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 1,
+            "fp": null,
+            "fn": 141,
+            "precision": null,
+            "recall": 0.007042253521126761,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 109,
+            "fp": null,
+            "fn": 380,
+            "precision": null,
+            "recall": 0.2229038854805726,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 1,
+            "fp": null,
+            "fn": 6386,
+            "precision": null,
+            "recall": 0.0001565680288085173,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 0,
+            "fp": null,
+            "fn": 599,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 54,
+            "fp": null,
+            "fn": 1391,
+            "precision": null,
+            "recall": 0.03737024221453287,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 53,
+            "fp": null,
+            "fn": 1111,
+            "precision": null,
+            "recall": 0.04553264604810996,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 9,
+            "fp": null,
+            "fn": 6747,
+            "precision": null,
+            "recall": 0.0013321492007104796,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 1357,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          },
+          "source:flood2": {
+            "tp": 115,
+            "fp": 283,
+            "fn": 907,
+            "precision": 0.2889447236180904,
+            "recall": 0.11252446183953033,
+            "f2": 0.12817654926437808
+          },
+          "source:rubble": {
+            "tp": 1,
+            "fp": 4,
+            "fn": 6985,
+            "precision": 0.2,
+            "recall": 0.000143143429716576,
+            "f2": 0.00017889727718344126
+          }
+        },
+        "0.25": {
+          "class:flood1:Person drowning": {
+            "tp": 0,
+            "fp": null,
+            "fn": 189,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 1027,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 141,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 1,
+            "fp": null,
+            "fn": 390,
+            "precision": null,
+            "recall": 0.0025575447570332483,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 0,
+            "fp": null,
+            "fn": 142,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 97,
+            "fp": null,
+            "fn": 392,
+            "precision": null,
+            "recall": 0.1983640081799591,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 1,
+            "fp": null,
+            "fn": 6386,
+            "precision": null,
+            "recall": 0.0001565680288085173,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 0,
+            "fp": null,
+            "fn": 599,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 47,
+            "fp": null,
+            "fn": 1398,
+            "precision": null,
+            "recall": 0.032525951557093424,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 47,
+            "fp": null,
+            "fn": 1117,
+            "precision": null,
+            "recall": 0.040378006872852236,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 5,
+            "fp": null,
+            "fn": 6751,
+            "precision": null,
+            "recall": 0.0007400828892835998,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 1357,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          },
+          "source:flood2": {
+            "tp": 98,
+            "fp": 128,
+            "fn": 924,
+            "precision": 0.4336283185840708,
+            "recall": 0.0958904109589041,
+            "f2": 0.11358368103847936
+          },
+          "source:rubble": {
+            "tp": 1,
+            "fp": 3,
+            "fn": 6985,
+            "precision": 0.25,
+            "recall": 0.000143143429716576,
+            "f2": 0.000178903678259625
+          }
+        },
+        "0.35": {
+          "class:flood1:Person drowning": {
+            "tp": 0,
+            "fp": null,
+            "fn": 189,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 1027,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 141,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 0,
+            "fp": null,
+            "fn": 391,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 0,
+            "fp": null,
+            "fn": 142,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 80,
+            "fp": null,
+            "fn": 409,
+            "precision": null,
+            "recall": 0.16359918200409,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 0,
+            "fp": null,
+            "fn": 6387,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 0,
+            "fp": null,
+            "fn": 599,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 39,
+            "fp": null,
+            "fn": 1406,
+            "precision": null,
+            "recall": 0.02698961937716263,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 36,
+            "fp": null,
+            "fn": 1128,
+            "precision": null,
+            "recall": 0.030927835051546393,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 5,
+            "fp": null,
+            "fn": 6751,
+            "precision": null,
+            "recall": 0.0007400828892835998,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 1357,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          },
+          "source:flood2": {
+            "tp": 80,
+            "fp": 66,
+            "fn": 942,
+            "precision": 0.547945205479452,
+            "recall": 0.07827788649706457,
+            "f2": 0.0944733112895607
+          },
+          "source:rubble": {
+            "tp": 0,
+            "fp": 1,
+            "fn": 6986,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          }
+        },
+        "0.5": {
+          "class:flood1:Person drowning": {
+            "tp": 0,
+            "fp": null,
+            "fn": 189,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person in water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 1027,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood1:Person out of water": {
+            "tp": 0,
+            "fp": null,
+            "fn": 141,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:drowning": {
+            "tp": 0,
+            "fp": null,
+            "fn": 391,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:in-car": {
+            "tp": 0,
+            "fp": null,
+            "fn": 142,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:flood2:person": {
+            "tp": 57,
+            "fp": null,
+            "fn": 432,
+            "precision": null,
+            "recall": 0.1165644171779141,
+            "f2": null
+          },
+          "class:rubble:Person": {
+            "tp": 0,
+            "fp": null,
+            "fn": 6387,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "class:rubble:Person in Rubble": {
+            "tp": 0,
+            "fp": null,
+            "fn": 599,
+            "precision": null,
+            "recall": 0.0,
+            "f2": null
+          },
+          "size:large": {
+            "tp": 24,
+            "fp": null,
+            "fn": 1421,
+            "precision": null,
+            "recall": 0.01660899653979239,
+            "f2": null
+          },
+          "size:medium": {
+            "tp": 30,
+            "fp": null,
+            "fn": 1134,
+            "precision": null,
+            "recall": 0.02577319587628866,
+            "f2": null
+          },
+          "size:small": {
+            "tp": 3,
+            "fp": null,
+            "fn": 6753,
+            "precision": null,
+            "recall": 0.0004440497335701599,
+            "f2": null
+          },
+          "source:flood1": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 1357,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          },
+          "source:flood2": {
+            "tp": 57,
+            "fp": 29,
+            "fn": 965,
+            "precision": 0.6627906976744186,
+            "recall": 0.05577299412915851,
+            "f2": 0.06827982750359367
+          },
+          "source:rubble": {
+            "tp": 0,
+            "fp": 1,
+            "fn": 6986,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f2": 0.0
+          }
+        }
+      },
+      "mean_inference_ms": 152.58902069762476
+    }
+  },
+  "miss_diagnostics_at_015": {
+    "yolo26s": {
+      "misses": 6949,
+      "misses_with_iou_at_least_010": 900,
+      "misses_with_candidate_center_inside_gt": 602
+    },
+    "best_plain": {
+      "misses": 9299,
+      "misses_with_iou_at_least_010": 22,
+      "misses_with_candidate_center_inside_gt": 19
+    },
+    "best_storm": {
+      "misses": 9249,
+      "misses_with_iou_at_least_010": 38,
+      "misses_with_candidate_center_inside_gt": 32
+    }
+  }
+}
